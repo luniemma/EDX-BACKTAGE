@@ -20,7 +20,7 @@
   "keywords": ["express", "typescript", "prisma", "postgres", "jwt"],
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^7.8.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
