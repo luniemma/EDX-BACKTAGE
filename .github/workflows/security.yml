@@ -1,0 +1,146 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly full scan (Mondays 06:00 UTC) — catches newly disclosed CVEs
+    # in dependencies that haven't changed but got worse.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to the Security tab
+  actions: read
+
+jobs:
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Audit production deps (high+)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit all deps (informational)
+        if: always()
+        run: npm audit --audit-level=moderate || true
+
+  trivy-fs:
+    name: Trivy filesystem (deps + code)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy fs scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-dirs: node_modules,dist,coverage
+          trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+      - name: Fail on findings
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+          skip-dirs: node_modules,dist,coverage
+          trivyignores: .trivyignore
+
+  trivy-config:
+    name: Trivy config (Dockerfile + Helm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: Render Helm chart for scanning
+        run: |
+          mkdir -p rendered
+          helm template backend-api deploy/helm/backend-api \
+            -f deploy/helm/backend-api/values.yaml \
+            -f deploy/helm/backend-api/values-prod.yaml \
+            --set image.tag=scan \
+            --set secrets.create=true \
+            --set secrets.jwtSecret=scan-secret-that-is-long-enough-1234 \
+            --set secrets.databaseUrl=postgresql://x:y@z:5432/db \
+            > rendered/all.yaml
+
+      - name: Trivy config scan (Dockerfile + rendered manifests)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          skip-dirs: node_modules,dist,coverage
+          trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+      - name: Fail on high+ misconfig
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          skip-dirs: node_modules,dist,coverage
+          trivyignores: .trivyignore
+
+  gitleaks:
+    name: Gitleaks (secret scanning)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Uncomment if you have a Gitleaks Pro license:
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          config-path: .gitleaks.toml

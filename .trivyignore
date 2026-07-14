@@ -1,0 +1,8 @@
+# Trivy suppression file.
+#
+# One entry per line. Formats:
+#   CVE-2024-12345                       (silence a CVE globally)
+#   CVE-2024-12345 exp:2026-01-01        (silence with expiry)
+#   AVD-DS-0002                          (silence a misconfig rule id)
+#
+# Every entry should be justified in a comment. Prefer fixing over ignoring.

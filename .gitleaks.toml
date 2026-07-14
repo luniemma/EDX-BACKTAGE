@@ -1,0 +1,23 @@
+# Gitleaks configuration.
+# Extends the default ruleset and adds a small local allowlist for known-safe
+# strings (test fixtures, example env files, placeholder JWT secrets).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local allowlist for test/example placeholders"
+paths = [
+  '''\.env\.example$''',
+  '''README\.md$''',
+  '''prisma/seed\.ts$''',
+  '''tests/''',
+  '''deploy/helm/backend-api/values(-.*)?\.yaml$''',
+]
+regexes = [
+  '''change-me-to-a-long-random-string''',
+  '''dev-only-not-a-real-secret-please-rotate''',
+  '''test-secret-that-is-long-enough-\d+''',
+  '''ci-secret-that-is-long-enough-\d+''',
+  '''scan-secret-that-is-long-enough-\d+''',
+]

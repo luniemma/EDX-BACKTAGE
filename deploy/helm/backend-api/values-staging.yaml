@@ -1,0 +1,56 @@
+replicaCount: 2
+
+image:
+  tag: ""  # bumped by the promote workflow
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  CORS_ORIGIN: "https://staging.example.com"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: api.staging.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: api-staging-example-com-tls
+      hosts:
+        - api.staging.example.com
+
+resources:
+  requests:
+    cpu: 150m
+    memory: 192Mi
+  limits:
+    cpu: 750m
+    memory: 768Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+postgres:
+  enabled: false
+
+# Staging pulls creds from an out-of-band Secret, same pattern as prod.
+secrets:
+  create: false
+  existingSecret: backend-api-staging-secrets
+
+# IRSA: point the pod ServiceAccount at the pull role from the Terraform stack
+# if you'd rather not grant node-wide ECR pull.
+serviceAccount:
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/backend-api-pull-staging

@@ -1,0 +1,150 @@
+name: promote
+
+# Promote an already-built ECR image between environments by bumping the
+# target env's Helm values file. The image itself is never rebuilt — the
+# same digest that ran in dev/staging is what reaches prod.
+#
+# Approval gating is handled by GitHub Environments: configure required
+# reviewers on the `staging` and `production` environments in repo settings.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_env:
+        description: "Environment to promote FROM (reads its current image.tag)"
+        required: true
+        type: choice
+        options: [dev, staging]
+        default: dev
+      target_env:
+        description: "Environment to promote TO"
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      image_tag:
+        description: "Optional: pin the exact tag instead of reading source. e.g. sha-abc1234 or 1.2.3"
+        required: false
+        type: string
+
+concurrency:
+  # One promotion per target env at a time.
+  group: promote-${{ github.event.inputs.target_env }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+env:
+  AWS_REGION:     ${{ vars.AWS_REGION }}
+  ECR_REGISTRY:   ${{ vars.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+
+jobs:
+  resolve-tag:
+    name: resolve tag from ${{ github.event.inputs.source_env }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mikefarah/yq@v4.44.3
+      - id: pick
+        env:
+          SRC:   ${{ github.event.inputs.source_env }}
+          INPUT: ${{ github.event.inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT}" ]; then
+            TAG="${INPUT}"
+            echo "Using input tag: ${TAG}"
+          else
+            FILE="deploy/helm/backend-api/values-${SRC}.yaml"
+            TAG=$(yq -r '.image.tag' "$FILE")
+            if [ -z "${TAG}" ] || [ "${TAG}" = "null" ]; then
+              echo "::error::No image.tag found in ${FILE}"
+              exit 1
+            fi
+            echo "Resolved from ${FILE}: ${TAG}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  verify-image:
+    name: verify image exists in ECR
+    runs-on: ubuntu-latest
+    needs: resolve-tag
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region:     ${{ env.AWS_REGION }}
+      - name: describe-images
+        run: |
+          set -euo pipefail
+          aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${{ needs.resolve-tag.outputs.tag }}" \
+            --query 'imageDetails[0].{tags:imageTags,digest:imageDigest,pushedAt:imagePushedAt,scan:imageScanFindingsSummary.findingSeverityCounts}'
+
+  promote:
+    name: promote to ${{ github.event.inputs.target_env }}
+    runs-on: ubuntu-latest
+    needs: [resolve-tag, verify-image]
+    # GitHub Environment: configure required reviewers under
+    # Settings → Environments → staging|production.
+    environment: ${{ github.event.inputs.target_env }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: mikefarah/yq@v4.44.3
+
+      - name: Compute target values file + PR base
+        id: target
+        env:
+          TARGET: ${{ github.event.inputs.target_env }}
+        run: |
+          set -euo pipefail
+          case "${TARGET}" in
+            staging)
+              FILE="deploy/helm/backend-api/values-staging.yaml"
+              BASE="main"
+              ;;
+            production)
+              FILE="deploy/helm/backend-api/values-prod.yaml"
+              BASE="release/prod"
+              ;;
+            *)
+              echo "::error::Unknown target ${TARGET}"; exit 1 ;;
+          esac
+          echo "file=${FILE}" >> "$GITHUB_OUTPUT"
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump image.tag
+        env:
+          TAG:  ${{ needs.resolve-tag.outputs.tag }}
+          FILE: ${{ steps.target.outputs.file }}
+        run: |
+          yq -i ".image.tag = \"${TAG}\"" "${FILE}"
+          git diff -- "${FILE}" || true
+
+      - name: Open promotion PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: ${{ steps.target.outputs.base }}
+          branch: chore/promote-${{ github.event.inputs.target_env }}-${{ needs.resolve-tag.outputs.tag }}
+          delete-branch: true
+          commit-message: "chore(${{ github.event.inputs.target_env }}): promote image ${{ needs.resolve-tag.outputs.tag }}"
+          title: "Promote ${{ needs.resolve-tag.outputs.tag }} → ${{ github.event.inputs.target_env }}"
+          body: |
+            Promoting **${{ needs.resolve-tag.outputs.tag }}** from
+            `${{ github.event.inputs.source_env }}` → **${{ github.event.inputs.target_env }}**.
+
+            Same image digest that was validated in the source environment.
+            Merging this PR triggers ArgoCD to sync `${{ github.event.inputs.target_env }}`.
+          labels: promotion,automated,env/${{ github.event.inputs.target_env }}

@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-api-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: backend-api
+  source:
+    repoURL: https://github.com/your-org/backend-api.git
+    targetRevision: main
+    path: deploy/helm/backend-api
+    helm:
+      releaseName: backend-api
+      valueFiles:
+        - values.yaml
+        - values-staging.yaml
+      # image.tag is set in values-staging.yaml by the promote workflow —
+      # do NOT override it here or the promotion will not take effect.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend-api-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 7

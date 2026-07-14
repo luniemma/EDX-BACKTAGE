@@ -1,0 +1,16 @@
+apiVersion: v2
+name: backend-api
+description: Node.js + Express + Prisma backend deployed to Kubernetes
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.25.0-0"
+keywords:
+  - node
+  - express
+  - prisma
+  - postgres
+maintainers:
+  - name: platform
+sources:
+  - https://example.com/backend-api

@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-api-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: backend-api
+  source:
+    repoURL: https://github.com/your-org/backend-api.git
+    # Track a release branch or specific tag in prod, NOT main.
+    targetRevision: release/prod
+    path: deploy/helm/backend-api
+    helm:
+      releaseName: backend-api
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      # Image tag is expected to be set by CI (e.g. by argocd-image-updater
+      # or a bot commit) — do not hard-code it here.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend-api-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 10

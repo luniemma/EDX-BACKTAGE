@@ -1,0 +1,22 @@
+aws_region      = "us-east-1"
+project         = "backend-api"
+repository_name = "backend-api"
+
+github_owner = "your-org"
+github_repo  = "backend-api"
+
+# Which refs are allowed to assume the push role via OIDC.
+github_push_branches = ["main", "release/prod"]
+github_push_tags     = ["v*.*.*"]
+
+# Flip to false if an OIDC provider for token.actions.githubusercontent.com
+# already exists in the account (only one per account is allowed).
+create_github_oidc_provider = true
+
+# Add EKS cluster account IDs here if the cluster lives in a different account.
+additional_pull_account_ids = []
+
+extra_tags = {
+  Environment = "shared"
+  Owner       = "platform"
+}

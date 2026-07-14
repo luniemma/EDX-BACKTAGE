@@ -1,0 +1,162 @@
+name: cd-dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "package*.json"
+      - "tsconfig.json"
+      - "Dockerfile"
+      - ".github/workflows/cd-dev.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # to commit the tag bump back to main
+  id-token: write        # for OIDC federation with AWS
+  security-events: write # to upload Trivy SARIF to the Security tab
+
+env:
+  AWS_REGION:     ${{ vars.AWS_REGION }}
+  ECR_REGISTRY:   ${{ vars.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+
+jobs:
+  build-and-push:
+    name: build + push image to ECR
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag:    ${{ steps.tag.outputs.tag }}
+      image_ref:    ${{ steps.tag.outputs.ref }}
+      image_digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          SHORT="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          REF="${ECR_REGISTRY}/${ECR_REPOSITORY}:${SHORT}"
+          echo "tag=${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REF}"   >> "$GITHUB_OUTPUT"
+          echo "Building ${REF}"
+
+      - name: Compute labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  scan-image:
+    name: trivy scan pushed image
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Trivy image scan (SARIF, all severities)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${{ needs.build-and-push.outputs.image_digest }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Fail on CRITICAL findings
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${{ needs.build-and-push.outputs.image_digest }}
+          severity: CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+  bump-dev-values:
+    name: bump values-dev.yaml image.tag
+    runs-on: ubuntu-latest
+    needs: [build-and-push, scan-image]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4.44.3
+
+      - name: Set image.tag
+        env:
+          NEW_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          yq -i ".image.tag = \"${NEW_TAG}\"" deploy/helm/backend-api/values-dev.yaml
+          echo "Updated values-dev.yaml to ${NEW_TAG}"
+          git diff -- deploy/helm/backend-api/values-dev.yaml || true
+
+      - name: Commit and push
+        env:
+          NEW_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/helm/backend-api/values-dev.yaml
+          git commit -m "chore(dev): bump image.tag to ${NEW_TAG} [skip ci]"
+          git push
