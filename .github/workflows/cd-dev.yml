@@ -19,7 +19,6 @@ concurrency:
 permissions:
   contents: write        # to commit the tag bump back to main
   id-token: write        # for OIDC federation with AWS
-  security-events: write # to upload Trivy SARIF to the Security tab
 
 env:
   AWS_REGION:     ${{ vars.AWS_REGION }}
@@ -100,22 +99,14 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Trivy image scan (SARIF, all severities)
+      - name: Trivy image scan (informational)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${{ needs.build-and-push.outputs.image_digest }}
-          format: sarif
-          output: trivy-image.sarif
+          format: table
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           trivyignores: .trivyignore
-
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
 
       - name: Fail on CRITICAL findings
         uses: aquasecurity/trivy-action@v0.36.0
@@ -136,9 +127,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Install yq
-        uses: mikefarah/yq@v4.44.3
-
+      # yq ships preinstalled on the ubuntu runner images. The mikefarah/yq
+      # action is a command runner (requires a `cmd` input), not an installer.
       - name: Set image.tag
         env:
           NEW_TAG: ${{ needs.build-and-push.outputs.image_tag }}
