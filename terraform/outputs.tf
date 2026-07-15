@@ -22,3 +22,13 @@ output "pull_policy_arn" {
   description = "IAM policy ARN granting pull access. Attach to your EKS node role or an IRSA role."
   value       = aws_iam_policy.pull.arn
 }
+
+output "terraform_plan_role_arn" {
+  description = "Read-only role assumed by the terraform plan workflow on PRs"
+  value       = aws_iam_role.tf_plan.arn
+}
+
+output "terraform_apply_role_arn" {
+  description = "Read/write role assumed by the terraform apply workflow on main"
+  value       = aws_iam_role.tf_apply.arn
+}

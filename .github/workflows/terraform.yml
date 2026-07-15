@@ -1,0 +1,129 @@
+name: terraform
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  # Never let two applies touch the same state at once. Queue rather than
+  # cancel: a cancelled apply can leave a stale S3 lock behind.
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write        # OIDC federation with AWS
+  pull-requests: write   # to post the plan back onto the PR
+
+env:
+  TF_VERSION: "1.14.7"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  plan:
+    name: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      # -lock=false keeps this read-only: the plan role has no write access to
+      # the state bucket, so acquiring a lock would fail.
+      - name: Plan
+        id: plan
+        run: |
+          terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_PATH: terraform/plan.txt
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync(process.env.PLAN_PATH, 'utf8');
+            const LIMIT = 60000;
+            if (plan.length > LIMIT) {
+              plan = plan.slice(-LIMIT) + '\n\n...output truncated, see the job log for the full plan.';
+            }
+            const body = [
+              '#### Terraform plan',
+              '',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```terraform',
+              plan,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+  apply:
+    name: apply
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Add a required reviewer to this environment in repo settings if you want
+    # applies to be gated on a human approval.
+    environment: terraform-apply
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read/write)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Apply
+        run: terraform apply -input=false -auto-approve
+
+      - name: Outputs
+        run: terraform output
