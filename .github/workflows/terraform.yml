@@ -104,9 +104,15 @@ jobs:
     name: apply
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # Add a required reviewer to this environment in repo settings if you want
-    # applies to be gated on a human approval.
-    environment: terraform-apply
+    # Deliberately NOT tied to an `environment:`. Attaching one rewrites the
+    # OIDC subject claim from
+    #   repo:OWNER/REPO:ref:refs/heads/main
+    # to
+    #   repo:OWNER/REPO:environment:NAME
+    # which drops the branch out of the claim the tf-apply trust policy pins
+    # on. To add a required-reviewer gate, add the environment here AND add
+    # the environment subject to tf_apply_assume in terraform/tf-cicd.tf,
+    # plus a deployment branch policy so the environment stays main-only.
     steps:
       - uses: actions/checkout@v4
 
