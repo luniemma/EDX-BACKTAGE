@@ -9,3 +9,11 @@ coverage/
 .vscode/
 .idea/
 prisma/*.db
+
+# Terraform — state can hold sensitive values; tfvars is per-account config
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
