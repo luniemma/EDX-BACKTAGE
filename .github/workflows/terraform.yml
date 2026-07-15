@@ -30,6 +30,10 @@ env:
 
 defaults:
   run:
+    # `shell: bash` runs with -eo pipefail. The implicit default is `bash -e`
+    # with NO pipefail, which would let `terraform plan | tee` report tee's
+    # exit code and turn a failed plan into a green step.
+    shell: bash
     working-directory: terraform
 
 jobs:
@@ -64,9 +68,7 @@ jobs:
       # the state bucket, so acquiring a lock would fail.
       - name: Plan
         id: plan
-        run: |
-          terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
-          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+        run: terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
 
       - name: Comment plan on PR
         uses: actions/github-script@v7
