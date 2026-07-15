@@ -2,7 +2,7 @@ aws_region      = "us-east-1"
 project         = "backend-api"
 repository_name = "backend-api"
 
-github_owner = "your-org"
+github_owner = "luniemma"
 github_repo  = "backend-api"
 
 # Which refs are allowed to assume the push role via OIDC.

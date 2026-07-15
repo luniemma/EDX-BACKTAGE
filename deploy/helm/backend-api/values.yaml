@@ -4,9 +4,8 @@
 replicaCount: 2
 
 image:
-  # Set to the `repository_url` output of the Terraform stack, e.g.
-  #   123456789012.dkr.ecr.us-east-1.amazonaws.com/backend-api
-  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/backend-api
+  # `repository_url` output of the terraform/ stack.
+  repository: 724772096574.dkr.ecr.us-east-1.amazonaws.com/backend-api
   tag: ""              # defaults to Chart.appVersion when empty
   pullPolicy: IfNotPresent
 
