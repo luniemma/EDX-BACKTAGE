@@ -8,7 +8,7 @@ metadata:
 spec:
   project: backend-api
   source:
-    repoURL: https://github.com/your-org/backend-api.git
+    repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
     # Track a release branch or specific tag in prod, NOT main.
     targetRevision: release/prod
     path: deploy/helm/backend-api

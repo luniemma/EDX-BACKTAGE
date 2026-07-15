@@ -3,7 +3,7 @@ import { unauthorized } from '../../utils/httpError';
 import * as notesService from './notes.service';
 import type { CreateNoteInput, UpdateNoteInput } from './notes.schema';
 
-function requireUser(req: Request) {
+function requireUser(req: Pick<Request, 'user'>) {
   if (!req.user) throw unauthorized();
   return { id: req.user.sub, isAdmin: req.user.role === 'ADMIN' };
 }

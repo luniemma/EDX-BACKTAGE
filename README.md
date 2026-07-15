@@ -51,7 +51,7 @@ docker compose exec api npx tsx prisma/seed.ts
 
 ## Local development
 
-Requires Node 20+ and a running Postgres.
+Requires Node 20.19+ (22 LTS recommended) and a running Postgres.
 
 ```bash
 cp .env.example .env
@@ -279,5 +279,6 @@ Suppress noisy false positives via `.trivyignore` (per-CVE) or `.gitleaks.toml` 
 
 ## Notes
 
-- The first time you run locally, you need to create the initial migration: `npm run prisma:migrate:dev -- --name init`. Commit `prisma/migrations/` — the Docker image and the Helm migration Job both rely on it.
+- **Prisma 7**: the connection URL lives in `prisma.config.ts` (read from `DATABASE_URL`), not in `schema.prisma`. The runtime client connects through the `@prisma/adapter-pg` driver adapter (see `src/db/client.ts`). `prisma.config.ts` is shipped in the Docker image so in-container `prisma migrate deploy` works.
+- The initial migration (`prisma/migrations/`) is committed — the Docker image and the Helm migration Job apply it via `prisma migrate deploy`. For new schema changes, run `npm run prisma:migrate:dev -- --name <change>` and commit the new migration.
 - Update `image.repository` in `deploy/helm/backend-api/values.yaml` and `repoURL` in the ArgoCD manifests before deploying.

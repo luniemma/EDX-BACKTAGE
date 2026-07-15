@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
 ########## Builder ##########
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
-COPY tsconfig.json ./
+COPY tsconfig.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
 
@@ -18,7 +18,7 @@ RUN npx prisma generate
 RUN npm run build && npm prune --omit=dev
 
 ########## Runtime ##########
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
-COPY package.json ./
+COPY prisma.config.ts package.json ./
 
 RUN useradd --system --create-home --uid 1001 nodeapp \
     && chown -R nodeapp:nodeapp /app

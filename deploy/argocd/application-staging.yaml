@@ -8,7 +8,7 @@ metadata:
 spec:
   project: backend-api
   source:
-    repoURL: https://github.com/your-org/backend-api.git
+    repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
     targetRevision: main
     path: deploy/helm/backend-api
     helm:

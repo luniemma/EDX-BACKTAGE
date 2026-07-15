@@ -6,7 +6,7 @@ metadata:
 spec:
   description: backend-api service across environments
   sourceRepos:
-    - https://github.com/your-org/backend-api.git
+    - https://github.com/luniemma/EDX-BACKTAGE.git
   destinations:
     - namespace: backend-api-*
       server: https://kubernetes.default.svc

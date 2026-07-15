@@ -6,10 +6,7 @@ module.exports = {
   testMatch: ['**/*.test.ts'],
   globalSetup: '<rootDir>/tests/globalSetup.ts',
   globalTeardown: '<rootDir>/tests/globalTeardown.ts',
-  setupFilesAfterEach: ['<rootDir>/tests/setup.ts'],
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-  },
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   clearMocks: true,
   collectCoverageFrom: ['src/**/*.ts', '!src/server.ts'],
   testTimeout: 30000,

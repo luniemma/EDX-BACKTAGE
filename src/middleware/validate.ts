@@ -1,10 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
-import { ZodSchema } from 'zod';
+import { ZodType } from 'zod';
 
 type Source = 'body' | 'query' | 'params';
 
 export const validate =
-  (schema: ZodSchema, source: Source = 'body') =>
+  (schema: ZodType, source: Source = 'body') =>
   (req: Request, _res: Response, next: NextFunction) => {
     const result = schema.safeParse(req[source]);
     if (!result.success) {
