@@ -2,9 +2,9 @@ data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 locals {
-  account_id  = data.aws_caller_identity.current.account_id
-  partition   = data.aws_partition.current.partition
-  repo_arn    = "arn:${local.partition}:ecr:${var.aws_region}:${local.account_id}:repository/${var.repository_name}"
+  account_id = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
+  repo_arn   = "arn:${local.partition}:ecr:${var.aws_region}:${local.account_id}:repository/${var.repository_name}"
   github_subs = concat(
     [for b in var.github_push_branches : "repo:${var.github_owner}/${var.github_repo}:ref:refs/heads/${b}"],
     [for t in var.github_push_tags : "repo:${var.github_owner}/${var.github_repo}:ref:refs/tags/${t}"],
@@ -49,10 +49,10 @@ resource "aws_ecr_lifecycle_policy" "this" {
         rulePriority = 2
         description  = "Keep last ${var.keep_last_release_images} release (v*) images"
         selection = {
-          tagStatus     = "tagged"
+          tagStatus      = "tagged"
           tagPatternList = ["v*"]
-          countType     = "imageCountMoreThan"
-          countNumber   = var.keep_last_release_images
+          countType      = "imageCountMoreThan"
+          countNumber    = var.keep_last_release_images
         }
         action = { type = "expire" }
       },
