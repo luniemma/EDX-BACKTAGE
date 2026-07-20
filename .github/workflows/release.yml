@@ -110,7 +110,7 @@ jobs:
           git diff -- deploy/helm/backstage/values-prod.yaml || true
 
       - name: Create PR against release/prod
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           base: release/prod
