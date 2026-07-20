@@ -1,8 +1,6 @@
 replicaCount: 1
-
 image:
-  tag: "sha-dd0d602"
-
+  tag: "sha-1468cc0"
 env:
   # Backstage always ships a production bundle; NODE_ENV=development breaks it.
   NODE_ENV: production
@@ -11,7 +9,6 @@ env:
   POSTGRES_PORT: "5432"
   APP_BASE_URL: "http://backstage.dev.local"
   BACKEND_BASE_URL: "http://backstage.dev.local"
-
 ingress:
   enabled: true
   hosts:
@@ -19,18 +16,15 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-
 autoscaling:
   enabled: false
 podDisruptionBudget:
   enabled: false
-
 # Bring up an in-cluster Postgres for dev — no external DB needed.
 postgres:
   enabled: true
   persistence:
     size: 2Gi
-
 secrets:
   # Must match postgres.auth.password when using the in-cluster database.
   postgresPassword: "postgres"
