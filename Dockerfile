@@ -17,20 +17,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 g++ build-essential libsqlite3-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-USER node
+# This stage deliberately runs as root. It is discarded — only the runtime
+# stage below ships, and that one drops to the unprivileged `node` user.
+# Building as `node` instead means every directory COPY has to create along the
+# way is still owned by root, and `yarn build:backend` dies with
+# "EACCES: permission denied, mkdir '/app/packages/backend/dist'".
 WORKDIR /app
 ENV YARN_ENABLE_GLOBAL_CACHE=false
 
 # Yarn 4 comes from the checked-in release in .yarn/releases via corepack.
-COPY --chown=node:node .yarn ./.yarn
-COPY --chown=node:node .yarnrc.yml package.json yarn.lock backstage.json ./
-COPY --chown=node:node packages/app/package.json packages/app/package.json
-COPY --chown=node:node packages/backend/package.json packages/backend/package.json
+COPY .yarn ./.yarn
+COPY .yarnrc.yml package.json yarn.lock backstage.json ./
+COPY packages/app/package.json packages/app/
+COPY packages/backend/package.json packages/backend/
 
 # --immutable: fail rather than silently drift from the committed lockfile.
 RUN yarn install --immutable
 
-COPY --chown=node:node . .
+COPY . .
 
 RUN yarn tsc \
  && yarn build:backend --config ../../app-config.yaml
