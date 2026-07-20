@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/
@@ -82,7 +82,7 @@ jobs:
             --set externalPostgres.host=postgres.ci.invalid \
             > /tmp/rendered-prod.yaml
       - name: Upload rendered manifests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: helm-rendered
           path: /tmp/rendered-*.yaml
