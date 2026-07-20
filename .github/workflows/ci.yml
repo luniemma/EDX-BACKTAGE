@@ -16,45 +16,32 @@ jobs:
   node:
     name: lint + typecheck + test
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: appdb_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d appdb_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/appdb_test?schema=public
-      JWT_SECRET: ci-secret-that-is-long-enough-1234
-      NODE_ENV: test
+    # Backstage's own tests run against an in-memory better-sqlite3 database,
+    # so no Postgres service is needed here.
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: yarn
 
-      - run: npm ci
+      # Yarn 4 comes from .yarn/releases via corepack, pinned by packageManager
+      # in package.json.
+      - name: Enable corepack
+        run: corepack enable
 
-      - name: Prisma generate
-        run: npx prisma generate
+      - name: Install
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn tsc
 
       - name: Lint
-        run: npm run lint
-
-      - name: Typecheck (via build)
-        run: npm run build
+        run: yarn lint:all
 
       - name: Test
-        run: npm test -- --coverage
+        run: yarn test:all
 
       - name: Upload coverage
         if: always()
@@ -73,22 +60,26 @@ jobs:
         with:
           version: v3.15.4
       - name: Helm lint
-        run: helm lint deploy/helm/backend-api
+        run: helm lint deploy/helm/backstage
       - name: Helm template (dev)
         run: |
-          helm template backend-api deploy/helm/backend-api \
-            -f deploy/helm/backend-api/values.yaml \
-            -f deploy/helm/backend-api/values-dev.yaml \
+          helm template backstage deploy/helm/backstage \
+            -f deploy/helm/backstage/values.yaml \
+            -f deploy/helm/backstage/values-dev.yaml \
             > /tmp/rendered-dev.yaml
+      # prod deliberately has no externalPostgres.host committed, and the chart
+      # fails fast when neither that nor the in-cluster Postgres is set — so
+      # supply a throwaway host to render it.
       - name: Helm template (prod)
         run: |
-          helm template backend-api deploy/helm/backend-api \
-            -f deploy/helm/backend-api/values.yaml \
-            -f deploy/helm/backend-api/values-prod.yaml \
+          helm template backstage deploy/helm/backstage \
+            -f deploy/helm/backstage/values.yaml \
+            -f deploy/helm/backstage/values-prod.yaml \
             --set image.tag=ci \
             --set secrets.create=true \
-            --set secrets.jwtSecret=ci-secret-that-is-long-enough-1234 \
-            --set secrets.databaseUrl=postgresql://x:y@z:5432/db \
+            --set secrets.postgresPassword=ci-not-a-real-password \
+            --set secrets.backendSecret=ci-secret-that-is-long-enough-1234 \
+            --set externalPostgres.host=postgres.ci.invalid \
             > /tmp/rendered-prod.yaml
       - name: Upload rendered manifests
         uses: actions/upload-artifact@v4
@@ -112,4 +103,4 @@ jobs:
           load: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: backend-api:ci
+          tags: backstage:ci

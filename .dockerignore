@@ -1,14 +1,26 @@
-node_modules
-dist
-coverage
-.env
-.env.*
-!.env.example
+# Tuned for the multi-stage Dockerfile at the repo root, which builds FROM
+# SOURCE inside the image.
+#
+# Backstage's scaffold ships a .dockerignore that excludes packages/*/src and
+# plugins, because its own packages/backend/Dockerfile is a host build that
+# copies in a prebuilt bundle. Excluding source here instead makes `yarn tsc`
+# fail with "TS18003: No inputs were found in config file".
 .git
-.gitignore
-.vscode
-.idea
-*.log
-README.md
-Dockerfile
-docker-compose.yml
+.github
+node_modules
+packages/*/node_modules
+plugins/*/node_modules
+.yarn/cache
+.yarn/install-state.gz
+dist
+dist-types
+coverage
+
+# Local config may hold tokens — never bake it into an image.
+*.local.yaml
+
+# Not needed at build time.
+terraform
+deploy
+docs
+*.md

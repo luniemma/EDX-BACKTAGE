@@ -1,0 +1,69 @@
+replicaCount: 3
+
+image:
+  tag: ""  # pin per-release via ArgoCD parameter override or a Git tag
+
+env:
+  NODE_ENV: production
+  NODE_OPTIONS: "--no-node-snapshot"
+  LOG_LEVEL: info
+  POSTGRES_PORT: "5432"
+  APP_BASE_URL: "https://backstage.example.com"
+  BACKEND_BASE_URL: "https://backstage.example.com"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+  hosts:
+    - host: backstage.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: backstage-example-com-tls
+      hosts:
+        - backstage.example.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: backstage
+
+# Production: use managed Postgres and pull secrets from a Secret managed
+# by ESO / Sealed Secrets / Vault, etc.
+postgres:
+  enabled: false
+
+externalPostgres:
+  host: ""            # set to the production RDS endpoint
+  user: backstage
+
+# That Secret must provide POSTGRES_PASSWORD, BACKEND_SECRET and optionally
+# GITHUB_TOKEN.
+secrets:
+  create: false
+  existingSecret: backstage-prod-secrets
