@@ -1,0 +1,137 @@
+name: terraform
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  # Never let two applies touch the same state at once. Queue rather than
+  # cancel: a cancelled apply can leave a stale S3 lock behind.
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write        # OIDC federation with AWS
+  pull-requests: write   # to post the plan back onto the PR
+
+env:
+  TF_VERSION: "1.14.7"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+
+defaults:
+  run:
+    # `shell: bash` runs with -eo pipefail. The implicit default is `bash -e`
+    # with NO pipefail, which would let `terraform plan | tee` report tee's
+    # exit code and turn a failed plan into a green step.
+    shell: bash
+    working-directory: terraform
+
+jobs:
+  plan:
+    name: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      # -lock=false keeps this read-only: the plan role has no write access to
+      # the state bucket, so acquiring a lock would fail.
+      - name: Plan
+        id: plan
+        run: terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_PATH: terraform/plan.txt
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync(process.env.PLAN_PATH, 'utf8');
+            const LIMIT = 60000;
+            if (plan.length > LIMIT) {
+              plan = plan.slice(-LIMIT) + '\n\n...output truncated, see the job log for the full plan.';
+            }
+            const body = [
+              '#### Terraform plan',
+              '',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```terraform',
+              plan,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+  apply:
+    name: apply
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Deliberately NOT tied to an `environment:`. Attaching one rewrites the
+    # OIDC subject claim from
+    #   repo:OWNER/REPO:ref:refs/heads/main
+    # to
+    #   repo:OWNER/REPO:environment:NAME
+    # which drops the branch out of the claim the tf-apply trust policy pins
+    # on. To add a required-reviewer gate, add the environment here AND add
+    # the environment subject to tf_apply_assume in terraform/tf-cicd.tf,
+    # plus a deployment branch policy so the environment stays main-only.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read/write)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Apply
+        run: terraform apply -input=false -auto-approve
+
+      - name: Outputs
+        run: terraform output

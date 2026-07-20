@@ -74,6 +74,26 @@ variable "create_github_oidc_provider" {
   default     = true
 }
 
+# ----- Terraform's own CI roles / remote state -----
+
+variable "tfstate_bucket" {
+  description = "S3 bucket holding this stack's Terraform state. Must match the backend block in versions.tf."
+  type        = string
+  default     = "edx-backtage-tfstate-724772096574"
+}
+
+variable "tfstate_key" {
+  description = "S3 key of this stack's state object. Must match the backend block in versions.tf."
+  type        = string
+  default     = "backend-api/ecr/terraform.tfstate"
+}
+
+variable "terraform_apply_branches" {
+  description = "Branches allowed to assume the Terraform apply role. Keep this tight — apply can manage IAM."
+  type        = list(string)
+  default     = ["main"]
+}
+
 # ----- Pull side (EKS / cross-account) -----
 
 variable "additional_pull_account_ids" {

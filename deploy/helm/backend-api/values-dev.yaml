@@ -1,12 +1,9 @@
 replicaCount: 1
-
 image:
-  tag: "dev"
-
+  tag: "sha-dd0d602"
 env:
   NODE_ENV: development
   LOG_LEVEL: debug
-
 ingress:
   enabled: true
   hosts:
@@ -14,18 +11,14 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-
 autoscaling:
   enabled: false
-
 podDisruptionBudget:
   enabled: false
-
 # Bring up an in-cluster Postgres for dev — no external DB needed.
 postgres:
   enabled: true
   persistence:
     size: 2Gi
-
 secrets:
   jwtSecret: "dev-only-not-a-real-secret-please-rotate"

@@ -10,10 +10,11 @@ coverage/
 .idea/
 prisma/*.db
 
-# Terraform — state can hold sensitive values; tfvars is per-account config
+# Terraform — state can hold sensitive values and is kept in S3, not here.
+# terraform.tfvars IS committed on purpose: it holds no secrets, and the CI
+# plan/apply jobs need it (github_owner/github_repo have no defaults, and
+# create_github_oidc_provider must stay false). Never put secrets in it.
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
-terraform.tfvars
