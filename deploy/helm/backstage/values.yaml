@@ -34,9 +34,10 @@ podSecurityContext:
 
 securityContext:
   allowPrivilegeEscalation: false
-  # The scaffolder writes to a temp dir and isolated-vm compiles at runtime,
-  # so the root filesystem cannot be read-only without extra volume wiring.
-  readOnlyRootFilesystem: false
+  # Safe to keep read-only: native deps (isolated-vm, better-sqlite3) are
+  # compiled at image build time, and the only runtime writes are the
+  # scaffolder's, which go to the emptyDir mounted at /tmp by the Deployment.
+  readOnlyRootFilesystem: true
   capabilities:
     drop: ["ALL"]
 
