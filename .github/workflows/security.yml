@@ -14,16 +14,29 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Code scanning (SARIF upload + CodeQL) needs GitHub Advanced Security on a
-# private repo, which this repo does not have — uploads 403 and fail the run.
-# Findings are printed to the job log instead; the fail-on-CRITICAL gates below
-# are what actually block. Re-add the CodeQL job and SARIF uploads if GHAS is
-# ever enabled.
+# Code scanning is free on public repos, so SARIF uploads and CodeQL both work
+# here. If this repo is ever made private again they will 403 without GitHub
+# Advanced Security — at that point drop the upload steps and the codeql job,
+# not the fail-on-CRITICAL gates, which are what actually block.
 permissions:
   contents: read
+  security-events: write   # required to upload SARIF to the Security tab
   actions: read
 
 jobs:
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
   npm-audit:
     name: npm audit
     runs-on: ubuntu-latest
@@ -45,16 +58,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Trivy fs scan (informational)
+      - name: Trivy fs scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          format: table
+          format: sarif
+          output: trivy-fs.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           skip-dirs: node_modules,dist,coverage
           trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
       - name: Fail on findings
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -88,15 +108,22 @@ jobs:
             --set secrets.databaseUrl=postgresql://x:y@z:5432/db \
             > rendered/all.yaml
 
-      - name: Trivy config scan (Dockerfile + rendered manifests, informational)
+      - name: Trivy config scan (Dockerfile + rendered manifests)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
-          format: table
+          format: sarif
+          output: trivy-config.sarif
           severity: CRITICAL,HIGH,MEDIUM
           skip-dirs: node_modules,dist,coverage
           trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
       - name: Fail on high+ misconfig
         uses: aquasecurity/trivy-action@v0.36.0
         with:
