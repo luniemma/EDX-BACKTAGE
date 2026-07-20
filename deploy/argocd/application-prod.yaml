@@ -1,19 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backend-api-prod
+  name: backstage-prod
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: backend-api
+  project: backstage
   source:
     repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
     # Track a release branch or specific tag in prod, NOT main.
     targetRevision: release/prod
-    path: deploy/helm/backend-api
+    path: deploy/helm/backstage
     helm:
-      releaseName: backend-api
+      releaseName: backstage
       valueFiles:
         - values.yaml
         - values-prod.yaml
@@ -21,7 +21,7 @@ spec:
       # or a bot commit) — do not hard-code it here.
   destination:
     server: https://kubernetes.default.svc
-    namespace: backend-api-prod
+    namespace: backstage-prod
   syncPolicy:
     automated:
       prune: true

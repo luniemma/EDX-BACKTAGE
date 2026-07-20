@@ -37,21 +37,24 @@ jobs:
         with:
           category: "/language:javascript-typescript"
 
-  npm-audit:
-    name: npm audit
+  dependency-audit:
+    name: yarn audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-      - run: npm ci --ignore-scripts
+          node-version: 22
+          cache: yarn
+      - run: corepack enable
+      - run: yarn install --immutable --mode=skip-build
+      # Yarn 4's audit equivalent. Backstage pulls a very large transitive tree,
+      # so production deps are the gate and the full tree is informational.
       - name: Audit production deps (high+)
-        run: npm audit --omit=dev --audit-level=high
+        run: yarn npm audit --environment production --severity high
       - name: Audit all deps (informational)
         if: always()
-        run: npm audit --audit-level=moderate || true
+        run: yarn npm audit --severity moderate || true
 
   trivy-fs:
     name: Trivy filesystem (deps + code)
@@ -99,13 +102,14 @@ jobs:
       - name: Render Helm chart for scanning
         run: |
           mkdir -p rendered
-          helm template backend-api deploy/helm/backend-api \
-            -f deploy/helm/backend-api/values.yaml \
-            -f deploy/helm/backend-api/values-prod.yaml \
+          helm template backstage deploy/helm/backstage \
+            -f deploy/helm/backstage/values.yaml \
+            -f deploy/helm/backstage/values-prod.yaml \
             --set image.tag=scan \
             --set secrets.create=true \
-            --set secrets.jwtSecret=scan-secret-that-is-long-enough-1234 \
-            --set secrets.databaseUrl=postgresql://x:y@z:5432/db \
+            --set secrets.postgresPassword=scan-not-a-real-password \
+            --set secrets.backendSecret=scan-secret-that-is-long-enough-1234 \
+            --set externalPostgres.host=postgres.scan.invalid \
             > rendered/all.yaml
 
       - name: Trivy config scan (Dockerfile + rendered manifests)

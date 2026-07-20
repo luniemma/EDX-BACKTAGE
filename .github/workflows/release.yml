@@ -106,8 +106,8 @@ jobs:
         env:
           CLEAN: ${{ needs.build-and-push.outputs.clean }}
         run: |
-          yq -i ".image.tag = \"${CLEAN}\"" deploy/helm/backend-api/values-prod.yaml
-          git diff -- deploy/helm/backend-api/values-prod.yaml || true
+          yq -i ".image.tag = \"${CLEAN}\"" deploy/helm/backstage/values-prod.yaml
+          git diff -- deploy/helm/backstage/values-prod.yaml || true
 
       - name: Create PR against release/prod
         uses: peter-evans/create-pull-request@v7

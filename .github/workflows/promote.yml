@@ -61,7 +61,7 @@ jobs:
             TAG="${INPUT}"
             echo "Using input tag: ${TAG}"
           else
-            FILE="deploy/helm/backend-api/values-${SRC}.yaml"
+            FILE="deploy/helm/backstage/values-${SRC}.yaml"
             TAG=$(yq -r '.image.tag' "$FILE")
             if [ -z "${TAG}" ] || [ "${TAG}" = "null" ]; then
               echo "::error::No image.tag found in ${FILE}"
@@ -111,11 +111,11 @@ jobs:
           set -euo pipefail
           case "${TARGET}" in
             staging)
-              FILE="deploy/helm/backend-api/values-staging.yaml"
+              FILE="deploy/helm/backstage/values-staging.yaml"
               BASE="main"
               ;;
             production)
-              FILE="deploy/helm/backend-api/values-prod.yaml"
+              FILE="deploy/helm/backstage/values-prod.yaml"
               BASE="release/prod"
               ;;
             *)

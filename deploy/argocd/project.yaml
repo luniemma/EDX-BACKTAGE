@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: backend-api
+  name: backstage
   namespace: argocd
 spec:
-  description: backend-api service across environments
+  description: Backstage developer portal
   sourceRepos:
     - https://github.com/luniemma/EDX-BACKTAGE.git
   destinations:
-    - namespace: backend-api-*
+    - namespace: backstage-*
       server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ""

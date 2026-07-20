@@ -1,0 +1,66 @@
+replicaCount: 2
+
+image:
+  tag: ""  # bumped by the promote workflow
+
+env:
+  NODE_ENV: production
+  NODE_OPTIONS: "--no-node-snapshot"
+  LOG_LEVEL: info
+  POSTGRES_PORT: "5432"
+  APP_BASE_URL: "https://backstage.staging.example.com"
+  BACKEND_BASE_URL: "https://backstage.staging.example.com"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: backstage.staging.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: backstage-staging-example-com-tls
+      hosts:
+        - backstage.staging.example.com
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1536Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+postgres:
+  enabled: false
+
+# Point at the staging RDS instance.
+externalPostgres:
+  host: ""            # set to the RDS endpoint
+  user: backstage
+
+# Staging pulls creds from an out-of-band Secret, same pattern as prod.
+# That Secret must provide POSTGRES_PASSWORD, BACKEND_SECRET and optionally
+# GITHUB_TOKEN.
+secrets:
+  create: false
+  existingSecret: backstage-staging-secrets
+
+# IRSA: point the pod ServiceAccount at the pull role from the Terraform stack
+# if you'd rather not grant node-wide ECR pull.
+serviceAccount:
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/backend-api-pull-staging

@@ -1,0 +1,159 @@
+# Default values for the Backstage portal.
+# Override per-environment with values-<env>.yaml.
+
+replicaCount: 2
+
+image:
+  # `repository_url` output of the terraform/ stack. The ECR repository is
+  # still named backend-api — see docs/adr or README "Known gaps".
+  repository: 724772096574.dkr.ecr.us-east-1.amazonaws.com/backend-api
+  tag: ""              # defaults to Chart.appVersion when empty
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  # The Backstage image runs as the built-in `node` user (uid 1000), not 1001.
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # The scaffolder writes to a temp dir and isolated-vm compiles at runtime,
+  # so the root filesystem cannot be read-only without extra volume wiring.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  # Backstage's backend serves both the API and the bundled frontend on 7007.
+  targetPort: 7007
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: backstage.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: backstage-tls
+    #   hosts: [backstage.example.com]
+
+# Backstage is heavier than a plain API — the backend loads every plugin.
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1536Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# App environment (mounted as ConfigMap).
+# app-config.production.yaml resolves ${POSTGRES_*} and the base URLs from here.
+env:
+  NODE_ENV: production
+  # Required for the scaffolder's isolated-vm on Node 20+.
+  NODE_OPTIONS: "--no-node-snapshot"
+  LOG_LEVEL: info
+  POSTGRES_PORT: "5432"
+  # Must be the externally reachable URL, not localhost — the browser uses it.
+  APP_BASE_URL: "https://backstage.example.com"
+  BACKEND_BASE_URL: "https://backstage.example.com"
+
+# Secrets. Either provide values inline (chart creates the Secret)
+# or point at an existing Secret managed elsewhere (ESO, sealed-secrets, etc).
+secrets:
+  create: true
+  existingSecret: ""           # if set, chart will NOT create one; uses this Secret
+  # Postgres credentials consumed by app-config.production.yaml.
+  postgresPassword: "change-me"
+  # GitHub PAT for catalog ingestion / scaffolder. Leave empty to disable.
+  githubToken: ""
+  # Shared secret for backend-to-backend auth. Generate with `openssl rand -base64 32`.
+  backendSecret: "change-me-to-a-long-random-string"
+
+# Backstage runs its own Knex migrations at startup, so there is no separate
+# migration Job (unlike the Prisma app this chart replaced).
+
+# External Postgres (RDS). When host is set it wins over the in-cluster one.
+# The password always comes from the Secret, never from here.
+externalPostgres:
+  host: ""
+  user: backstage
+
+# Optional in-cluster Postgres for dev/preview environments only.
+# PRODUCTION SHOULD USE RDS — this is a single pod with no backups or failover.
+postgres:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  auth:
+    username: postgres
+    password: postgres
+    database: backstage
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Health probe paths — verified against a running Backstage backend.
+probes:
+  liveness:
+    path: /.backstage/health/v1/liveness
+    # Backstage boots slowly (plugin init + migrations); be generous or the
+    # kubelet will kill it mid-startup and crashloop.
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    path: /.backstage/health/v1/readiness
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6

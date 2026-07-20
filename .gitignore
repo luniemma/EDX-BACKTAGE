@@ -1,5 +1,6 @@
 node_modules/
-dist/
+dist
+dist-types
 coverage/
 .env
 .env.local
@@ -8,7 +9,19 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
-prisma/*.db
+
+# Backstage
+# Local config overrides — may contain tokens, never commit.
+*.local.yaml
+# Yarn 4 keeps its own release binary in-repo; that MUST be committed so CI and
+# the Docker build resolve the same Yarn. Everything else under .yarn is not.
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.yarn/install-state.gz
 
 # Terraform — state can hold sensitive values and is kept in S3, not here.
 # terraform.tfvars IS committed on purpose: it holds no secrets, and the CI
