@@ -1,6 +1,6 @@
 replicaCount: 1
 image:
-  tag: "sha-dd0d602"
+  tag: "sha-cd03143"
 env:
   NODE_ENV: development
   LOG_LEVEL: debug
