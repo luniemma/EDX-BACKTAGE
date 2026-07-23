@@ -7,22 +7,25 @@ env:
   NODE_OPTIONS: "--no-node-snapshot"
   LOG_LEVEL: debug
   POSTGRES_PORT: "5432"
-  # https:// — TLS terminates at the ingress using the cert issued by the
-  # local CA in deploy/tls-local. The browser uses these URLs, so they must
-  # match the scheme and host actually served.
-  APP_BASE_URL: "https://backstage.dev.local"
-  BACKEND_BASE_URL: "https://backstage.dev.local"
+  # The browser uses these verbatim, so they must match exactly how it reaches
+  # the portal — scheme, host AND port. The :8443 is the local port-forward to
+  # the ingress controller (see deploy/tls-local/README.md); without the port
+  # here the frontend calls :443 and every API request fails.
+  # <name>.127.0.0.1.nip.io is public wildcard DNS resolving to 127.0.0.1, so
+  # no hosts-file entry (and no Administrator) is needed.
+  APP_BASE_URL: "https://backstage.127.0.0.1.nip.io:8443"
+  BACKEND_BASE_URL: "https://backstage.127.0.0.1.nip.io:8443"
 ingress:
   enabled: true
   hosts:
-    - host: backstage.dev.local
+    - host: backstage.127.0.0.1.nip.io
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: backstage-tls   # created by cert-manager, see deploy/tls-local
       hosts:
-        - backstage.dev.local
+        - backstage.127.0.0.1.nip.io
 autoscaling:
   enabled: false
 podDisruptionBudget:
