@@ -7,8 +7,11 @@ env:
   NODE_OPTIONS: "--no-node-snapshot"
   LOG_LEVEL: debug
   POSTGRES_PORT: "5432"
-  APP_BASE_URL: "http://backstage.dev.local"
-  BACKEND_BASE_URL: "http://backstage.dev.local"
+  # https:// — TLS terminates at the ingress using the cert issued by the
+  # local CA in deploy/tls-local. The browser uses these URLs, so they must
+  # match the scheme and host actually served.
+  APP_BASE_URL: "https://backstage.dev.local"
+  BACKEND_BASE_URL: "https://backstage.dev.local"
 ingress:
   enabled: true
   hosts:
@@ -16,6 +19,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+  tls:
+    - secretName: backstage-tls   # created by cert-manager, see deploy/tls-local
+      hosts:
+        - backstage.dev.local
 autoscaling:
   enabled: false
 podDisruptionBudget:

@@ -1,0 +1,6 @@
+# Local-only Terraform state — this stack manages nothing in AWS.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+local-ca.crt
