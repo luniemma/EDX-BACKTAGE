@@ -16,6 +16,7 @@ spec:
   selector:
     matchLabels:
       {{- include "backstage.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backstage
   template:
     metadata:
       annotations:
@@ -28,6 +29,7 @@ spec:
         {{- end }}
       labels:
         {{- include "backstage.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backstage
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

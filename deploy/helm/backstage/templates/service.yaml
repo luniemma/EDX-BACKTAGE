@@ -13,3 +13,6 @@ spec:
       name: http
   selector:
     {{- include "backstage.selectorLabels" . | nindent 4 }}
+    # Without this, the selector (name + instance) also matches the Postgres
+    # StatefulSet pods, which carry the same base labels + component: database.
+    app.kubernetes.io/component: backstage
