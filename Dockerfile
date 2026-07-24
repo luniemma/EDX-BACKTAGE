@@ -70,6 +70,9 @@ RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 
 COPY --from=build --chown=node:node /app/app-config*.yaml ./
 COPY --from=build --chown=node:node /app/examples ./examples
+# Software templates are registered as file locations in app-config, so they
+# must exist inside the image or the catalog logs a missing-location error.
+COPY --from=build --chown=node:node /app/templates ./templates
 
 EXPOSE 7007
 

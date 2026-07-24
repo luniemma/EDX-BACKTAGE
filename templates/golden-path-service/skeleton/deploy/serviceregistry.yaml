@@ -1,0 +1,18 @@
+{% if values.provisionRegistry %}
+# Crossplane claim: asks the platform for a container registry.
+# The Composition (deploy/crossplane in the platform repo) turns this into an
+# ECR repository with immutable tags, scan-on-push and AES256 — none of which
+# this service needs to know about.
+apiVersion: platform.edx-backtage.io/v1alpha1
+kind: ServiceRegistry
+metadata:
+  name: ${{ values.name }}
+  namespace: ${{ values.name }}-${{ values.deployEnvironment }}
+spec:
+  serviceName: ${{ values.name }}
+  immutableTags: true
+  scanOnPush: true
+{% else %}
+# Registry provisioning was not requested; point image.repository at an
+# existing registry instead.
+{% endif %}

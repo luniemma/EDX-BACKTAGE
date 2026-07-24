@@ -1,0 +1,26 @@
+# Deploys this service. Committed by the scaffolder, but NOT applied by it —
+# a platform operator applies this, or an ApplicationSet watching the org
+# picks it up. Scaffolding a repo should not imply cluster write access.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${{ values.name }}-${{ values.deployEnvironment }}
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/${{ values.destination.owner }}/${{ values.destination.repo }}.git
+    targetRevision: main
+    path: deploy/helm
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ${{ values.name }}-${{ values.deployEnvironment }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

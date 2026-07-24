@@ -115,6 +115,13 @@ catalog:
       rules:
         - allow: [Template]
 
+    # The golden path: scaffolds a service plus its ArgoCD Application and
+    # Crossplane registry claim. See templates/golden-path-service.
+    - type: file
+      target: ../../templates/golden-path-service/template.yaml
+      rules:
+        - allow: [Template]
+
     # Local example organizational data
     - type: file
       target: ../../examples/org.yaml

@@ -1,0 +1,119 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: golden-path-service
+  title: Golden Path Service
+  description: |
+    Scaffolds a Node.js service and everything needed to run it: a GitHub repo
+    with CI, an ArgoCD Application so it actually deploys, and a Crossplane
+    ServiceRegistry claim for its container registry.
+  tags:
+    - recommended
+    - nodejs
+    - golden-path
+spec:
+  owner: group:default/guests
+  type: service
+
+  parameters:
+    - title: Service
+      required:
+        - name
+        - owner
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Lowercase, dashes allowed. Used for the repo, the ArgoCD app and the registry.
+          pattern: '^[a-z][a-z0-9-]{1,60}$'
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: What does this service do?
+        owner:
+          title: Owner
+          type: string
+          description: Team that owns it.
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: [Group, User]
+
+    - title: Infrastructure
+      properties:
+        provisionRegistry:
+          title: Provision a container registry
+          type: boolean
+          default: true
+          description: |
+            Creates a Crossplane ServiceRegistry claim, which provisions an ECR
+            repository. Uncheck to reuse an existing registry.
+        deployEnvironment:
+          title: Deploy to
+          type: string
+          default: dev
+          enum: [dev, staging]
+          description: Which ArgoCD environment this service targets.
+
+    - title: Repository
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+
+  steps:
+    - id: fetch-base
+      name: Render the service
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          destination: ${{ parameters.repoUrl | parseRepoUrl }}
+          provisionRegistry: ${{ parameters.provisionRegistry }}
+          deployEnvironment: ${{ parameters.deployEnvironment }}
+
+    - id: publish
+      name: Create the GitHub repo
+      action: publish:github
+      input:
+        description: ${{ parameters.description }}
+        repoUrl: ${{ parameters.repoUrl }}
+        defaultBranch: main
+        # Protect main from the start rather than retrofitting it later.
+        protectDefaultBranch: true
+        repoVisibility: public
+
+    - id: register
+      name: Register in the catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}
+    text:
+      - title: What happens next
+        content: |
+          The repo now contains an ArgoCD `Application` in `deploy/` and, if you
+          asked for one, a Crossplane `ServiceRegistry` claim.
+
+          **These are committed, not applied.** A platform operator (or an
+          ArgoCD ApplicationSet watching this org) still has to point ArgoCD at
+          the new repo. That handoff is deliberate — self-service scaffolding
+          should not grant self-service cluster write access.
