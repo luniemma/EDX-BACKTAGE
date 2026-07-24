@@ -65,3 +65,9 @@ variable "aws_secret_access_key" {
   sensitive   = true
   default     = ""
 }
+
+variable "install_xeta_apis" {
+  description = "Install the migrated ObjectStore API from the Xeta AI Platform repo. Installing the API is free; creating a claim provisions a real S3 bucket."
+  type        = bool
+  default     = true
+}

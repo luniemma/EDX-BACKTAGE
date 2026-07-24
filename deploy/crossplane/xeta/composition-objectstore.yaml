@@ -1,0 +1,107 @@
+# Migrated from luniemma/xeta-ai-platform crossplane/compositions/composition-objectstore.yaml
+#
+# The original uses `mode: Resources`, which Crossplane 2.x rejects outright:
+#   strict decoding error: unknown field "spec.resources"
+# Crossplane 2 removed native patch-and-transform in favour of pipeline
+# functions, so the same resources and patches now live under
+# function-patch-and-transform's input. Behaviour is unchanged: a private,
+# encrypted, versioned S3 bucket with public access fully blocked.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: objectstore-aws
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: platform.xeta.io/v1alpha1
+    kind: XObjectStore
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: bucket
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                forProvider:
+                  region: us-east-1
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      fmt: "xeta-npd-selfservice-%s"
+              - type: ToCompositeFieldPath
+                fromFieldPath: metadata.annotations[crossplane.io/external-name]
+                toFieldPath: status.bucketName
+
+          - name: bucket-encryption
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketServerSideEncryptionConfiguration
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  rule:
+                    - applyServerSideEncryptionByDefault:
+                        - sseAlgorithm: aws:kms
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+          - name: bucket-pab
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketPublicAccessBlock
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  blockPublicAcls: true
+                  blockPublicPolicy: true
+                  ignorePublicAcls: true
+                  restrictPublicBuckets: true
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+          - name: bucket-versioning
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketVersioning
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  versioningConfiguration:
+                    - status: Enabled
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
