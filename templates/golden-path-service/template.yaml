@@ -5,7 +5,8 @@ metadata:
   title: Golden Path Service
   description: |
     Scaffolds a Node.js service and everything needed to run it: a GitHub repo
-    with CI, an ArgoCD Application so it actually deploys, and a Crossplane
+    with CI that builds and publishes its image, a Helm chart, a GitOps ledger
+    entry so ArgoCD picks it up on the first green build, and a Crossplane
     ServiceRegistry claim for its container registry.
   tags:
     - recommended
@@ -74,6 +75,11 @@ spec:
       action: fetch:template
       input:
         url: ./skeleton
+        # The workflow is full of ${{ ... }} GitHub Actions expressions, which
+        # share their delimiters with the scaffolder's own templating. Rendering
+        # it would strip every one of them, so it is copied through untouched.
+        copyWithoutRender:
+          - .github/workflows/ci.yml
         values:
           name: ${{ parameters.name }}
           description: ${{ parameters.description }}
@@ -110,10 +116,28 @@ spec:
     text:
       - title: What happens next
         content: |
-          The repo now contains an ArgoCD `Application` in `deploy/` and, if you
-          asked for one, a Crossplane `ServiceRegistry` claim.
+          Push to `main`. CI tests the service, builds its image, pushes it to
+          ECR, and writes `deploy/gitops-entry.yaml` into the platform's GitOps
+          ledger with the tag it just built. ArgoCD's `services` ApplicationSet
+          turns that entry into an Application and syncs it. No one runs
+          `kubectl`, and nothing deploys until there is a real image to deploy.
 
-          **These are committed, not applied.** A platform operator (or an
-          ArgoCD ApplicationSet watching this org) still has to point ArgoCD at
-          the new repo. That handoff is deliberate — self-service scaffolding
-          should not grant self-service cluster write access.
+          The scaffolder never touches the cluster — it only creates a repo.
+          Cluster state changes because a commit landed in the ledger, which is
+          reviewable and revertible like any other commit.
+
+      - title: Before the first build can succeed
+        content: |
+          The new repo needs three things set on it, none of which the
+          scaffolder can create for you:
+
+          - variable `AWS_ROLE_TO_ASSUME` — the role CI federates into to push
+            to ECR
+          - variable `AWS_REGION` — `us-east-1`
+          - secret `APP_TOKEN` — a token with write access to the platform repo,
+            so CI can record the version. It cannot be named `GITHUB_*`; GitHub
+            reserves that prefix.
+
+          If you asked for a registry, the `ServiceRegistry` claim in
+          `deploy/serviceregistry.yaml` still has to be applied to the cluster by
+          the platform team before ECR will accept the push.

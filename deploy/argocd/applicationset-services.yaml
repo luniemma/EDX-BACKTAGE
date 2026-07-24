@@ -1,0 +1,74 @@
+# Turns the GitOps ledger into ArgoCD Applications.
+#
+# One file per service per environment under gitops/services/, one Application
+# out. Adding a service is a PR that adds a file; removing one is a PR that
+# deletes it. Nobody runs kubectl, which is the whole point — the scaffolder
+# can open that PR without ever holding cluster credentials.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services
+  namespace: argocd
+spec:
+  goTemplate: true
+  # Fail loudly on a malformed ledger entry. Without this a missing key renders
+  # as an empty string and you get an Application pointing at "" — which ArgoCD
+  # will happily create and then sync somewhere you did not intend.
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - git:
+        # THIS IS THE SEAM. Today the ledger is a directory in the platform repo
+        # so the loop closes without waiting on a second repo to exist. To split
+        # it out, create the repo, `git subtree split -P gitops`, push, and change
+        # the two lines below — nothing else in this file moves. See gitops/README.md.
+        repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
+        revision: main
+        files:
+          - path: "gitops/services/*/*/config.yaml"
+
+  template:
+    metadata:
+      name: "{{.service.name}}-{{.service.env}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: services
+      source:
+        # The ledger holds the pointer and the version; the manifests stay in
+        # the service's own repo. CI writes a tag here, not a rendered manifest.
+        repoURL: "{{.source.repoURL}}"
+        targetRevision: "{{.source.targetRevision}}"
+        path: "{{.source.path}}"
+        helm:
+          parameters:
+            - name: image.repository
+              value: "{{.image.repository}}"
+            - name: image.tag
+              value: "{{.image.tag}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.service.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 5
+
+  syncPolicy:
+    # Deleting a ledger entry deletes the Application, and the finalizer above
+    # takes its workloads with it. Offboarding is then a reviewed PR, exactly
+    # like onboarding, rather than a kubectl delete somebody forgets to do.
+    preserveResourcesOnDeletion: false

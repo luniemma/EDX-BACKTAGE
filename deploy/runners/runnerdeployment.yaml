@@ -1,0 +1,91 @@
+# Self-hosted GitHub Actions runners for this repo, via actions-runner-controller.
+#
+#   kubectl apply -f deploy/runners/runnerdeployment.yaml
+#
+# The controller must already be installed in actions-runner-system with GitHub
+# credentials (a github_token in the controller-manager secret, or a GitHub App).
+# .github/workflows/runner-smoke.yml verifies the whole path end to end.
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: self-hosted-runner
+  namespace: actions-runner-system
+spec:
+  # No `replicas` here on purpose — the HorizontalRunnerAutoscaler below owns
+  # it. Set both and they fight: the autoscaler scales up, apply pins it back.
+  template:
+    spec:
+      # Note the space after the colon. Without it this line parses as a plain
+      # string, spec.template.spec becomes a scalar instead of a mapping, and
+      # admission rejects it with "cannot unmarshal string into Go struct field
+      # RunnerTemplate.spec.template.spec of type RunnerSpec".
+      repository: luniemma/EDX-BACKTAGE
+
+      # Additive — self-hosted, Linux and X64 are still registered. Targeting
+      # `edx-backtage` in runs-on pins a job to these runners specifically,
+      # which starts to matter the moment a second RunnerDeployment exists.
+      labels:
+        - edx-backtage
+
+      # A fresh runner pod per job. Without this, one job can leave state in the
+      # work directory for whatever lands next — on a public repo that is a path
+      # for one pull request to read another's build output.
+      ephemeral: true
+
+      # An unbounded runner will happily consume the node. Sized for the smoke
+      # test and light builds; raise it before building the Backstage image
+      # here, which compiles isolated-vm from source and needs several GB.
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+
+      # Docker stays enabled because this org's pipelines build images, but be
+      # clear about the cost: it runs a privileged dockerd sidecar in every
+      # runner pod. If these runners never build images, `dockerEnabled: false`
+      # removes that container outright and is the single biggest hardening
+      # available here.
+      dockerEnabled: true
+      dockerdContainerResources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+
+      # Let an in-flight job finish rather than killing it mid-step when the
+      # autoscaler scales down or the pod is evicted.
+      terminationGracePeriodSeconds: 120
+---
+# Without this, a single fixed runner processes queued jobs strictly one after
+# another — which is exactly what happened the first time the smoke test ran on
+# two branches at once.
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: HorizontalRunnerAutoscaler
+metadata:
+  name: self-hosted-runner
+  namespace: actions-runner-system
+spec:
+  scaleTargetRef:
+    kind: RunnerDeployment
+    name: self-hosted-runner
+  minReplicas: 1
+  maxReplicas: 3
+  # Scaling down is deliberately lazy. Tearing a runner down the moment the
+  # queue drains means the next push pays full pod startup again — about 60s
+  # on this cluster.
+  scaleDownDelaySecondsAfterScaleOut: 300
+  metrics:
+    # PercentageRunnersBusy polls the GitHub API on an interval. It is the
+    # cheaper of the two metrics; TotalNumberOfQueuedAndInProgressWorkflowRuns
+    # is more responsive but lists workflow runs repeatedly and will eat into
+    # the API rate limit on a busy repo.
+    - type: PercentageRunnersBusy
+      scaleUpThreshold: "0.75"
+      scaleDownThreshold: "0.25"
+      scaleUpFactor: "2"
+      scaleDownFactor: "0.5"

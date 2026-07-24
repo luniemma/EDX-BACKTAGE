@@ -9,6 +9,53 @@ gives an engineering org one front door: a **Software Catalog** of every service
 and who owns it, **Software Templates** for golden-path scaffolding, and
 **TechDocs** for docs that live beside the code.
 
+## The platform loop
+
+```
+                         Developer
+                             │
+                             ▼
+                     ┌───────────────┐
+                     │   Backstage   │
+                     │ Platform Portal│
+                     └───────────────┘
+                       │     │     │
+             ┌─────────┘     │     └─────────┐
+             ▼               ▼               ▼
+       Software           Catalog         TechDocs
+       Templates
+             │
+             ▼
+       GitHub Repository       (scaffolder creates it)
+             │
+             ▼
+       GitHub Actions (CI)     (tests, builds, pushes to ECR)
+             │
+             ▼
+       GitOps Ledger           gitops/services/<svc>/<env>/config.yaml
+             │
+             ▼
+       Argo CD                 `services` ApplicationSet reads the ledger
+             │
+             ▼
+       Kubernetes
+             │
+             ▼
+       Crossplane              ServiceRegistry / ObjectStore claims
+             │
+             ▼
+       AWS resources
+```
+
+The only hand-off in that chain is code review. The scaffolder creates a repo
+and never touches the cluster; the cluster changes because a commit landed in
+the ledger. See [gitops/README.md](gitops/README.md) for the ledger contract and
+[deploy/argocd/README.md](deploy/argocd/README.md) for how to bootstrap it.
+
+Two stages are narrower than the diagram suggests: TechDocs is configured for
+local builds and does not work in-cluster yet, and Crossplane ships an Azure
+provider but no Azure Composition, so "cloud resources" means AWS in practice.
+
 ## Layout
 
 ```
@@ -17,13 +64,16 @@ packages/
   backend/                # Node backend (plugins, catalog, scaffolder)
 examples/                 # sample catalog entities, org, and a template
 plugins/                  # your own plugins go here
+templates/                # golden-path scaffolder template
+gitops/                   # deployment ledger — what runs where, at which version
 app-config.yaml           # base config (local dev defaults)
 app-config.production.yaml# production overrides; reads ${POSTGRES_*} etc.
 catalog-info.yaml         # this repo's own catalog entry
 Dockerfile                # multi-stage build for the backend
 deploy/
   helm/backstage/         # Helm chart
-  argocd/                 # ArgoCD AppProject + Applications
+  argocd/                 # ArgoCD AppProjects, Applications, ApplicationSet
+  crossplane/             # Crossplane install, XRDs, Compositions
 terraform/                # ECR, GitHub OIDC roles, remote state
 ```
 

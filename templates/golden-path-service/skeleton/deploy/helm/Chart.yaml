@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ${{ values.name }}
+description: ${{ values.description }}
+type: application
+# Chart version, not app version — the running version comes from image.tag,
+# which ArgoCD supplies from the GitOps ledger.
+version: 0.1.0
