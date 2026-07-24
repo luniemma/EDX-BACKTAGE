@@ -1,0 +1,37 @@
+# Infrastructure the platform depends on. These correspond to the Crossplane
+# claims in the platform repo (crossplane/claims/) and the Terraform modules.
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: xeta-cache
+  description: ElastiCache Redis feature store / prompt cache. Provisioned by the Crossplane Cache claim.
+  links:
+    - url: https://github.com/luniemma/xeta-ai-platform/blob/main/crossplane/claims/cache-featurestore.yaml
+      title: Crossplane claim
+spec:
+  type: cache
+  owner: group:default/guests
+  system: xeta-ai-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: xeta-prompt-logs
+  description: S3 bucket for prompt/response logs. Provisioned by the Crossplane ObjectStore claim.
+  links:
+    - url: https://github.com/luniemma/xeta-ai-platform/blob/main/crossplane/claims/objectstore-prompt-logs.yaml
+      title: Crossplane claim
+spec:
+  type: s3-bucket
+  owner: group:default/guests
+  system: xeta-ai-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: bedrock
+  description: Amazon Bedrock — the model backend LiteLLM routes to.
+spec:
+  type: ai-model-service
+  owner: group:default/guests
+  system: xeta-ai-platform

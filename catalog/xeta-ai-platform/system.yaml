@@ -1,0 +1,26 @@
+# Catalogs the Xeta AI Platform (github.com/luniemma/xeta-ai-platform) in
+# Backstage. That repo is a separate git repository; these entities describe it
+# without vendoring its code.
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: xeta-ai-platform
+  description: |
+    Azure APIM Self-Hosted Gateway fronting a private LiteLLM proxy on EKS,
+    with Amazon Bedrock as the model backend. Runs in the AWS NPD / Shared
+    Services account.
+  annotations:
+    github.com/project-slug: luniemma/xeta-ai-platform
+  links:
+    - url: https://github.com/luniemma/xeta-ai-platform
+      title: Repository
+    - url: https://github.com/luniemma/xeta-ai-platform/blob/main/docs/RUNBOOK.md
+      title: Runbook
+    - url: https://github.com/luniemma/xeta-ai-platform/blob/main/docs/NOTES.md
+      title: Engineering notes (ADRs, cost, DR)
+  tags:
+    - ai
+    - aws
+    - eks
+spec:
+  owner: group:default/guests
