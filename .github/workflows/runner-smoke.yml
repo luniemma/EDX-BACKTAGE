@@ -1,0 +1,66 @@
+# Proves the actions-runner-controller RunnerDeployment actually picks up jobs.
+#
+# Run it from the Actions tab (or by editing this file) after applying
+# runnerdeployment.yaml. If it sits in "Queued" the runner never registered —
+# that is a controller credentials problem, not a problem with this workflow.
+# See `kubectl logs -n actions-runner-system deploy/actions-runner-controller`.
+name: runner-smoke
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/runner-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: self-hosted runner smoke test
+    # runnerdeployment.yaml sets no custom labels, so the runner registers with
+    # just the defaults. Asking for anything more specific here queues forever.
+    runs-on: self-hosted
+    # Without this, a runner that never registers leaves the job queued for the
+    # repository's full 6-hour default. Five minutes is plenty to find out.
+    timeout-minutes: 5
+
+    steps:
+      - name: Identify the runner
+        run: |
+          echo "runner name : ${RUNNER_NAME:-unset}"
+          echo "os / arch   : ${RUNNER_OS:-unset} / ${RUNNER_ARCH:-unset}"
+          echo "hostname    : $(hostname)"
+
+      - name: Assert it is running in the cluster
+        run: |
+          set -euo pipefail
+          # An ARC runner is a pod, so it has a projected service account token.
+          # A GitHub-hosted runner has neither this file nor the env var, which
+          # is what makes this a real check rather than an echo.
+          NS_FILE=/var/run/secrets/kubernetes.io/serviceaccount/namespace
+          if [ ! -f "$NS_FILE" ] || [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            echo "::error::Job did not run in a Kubernetes pod. It was picked up"
+            echo "::error::by a different runner than the one runnerdeployment.yaml"
+            echo "::error::creates."
+            exit 1
+          fi
+          echo "namespace: $(cat "$NS_FILE")"
+          echo "api server: ${KUBERNETES_SERVICE_HOST}"
+
+      - uses: actions/checkout@v4
+
+      - name: Report the toolchain
+        run: |
+          echo "git    : $(git --version)"
+          echo "node   : $(node --version 2>/dev/null || echo 'not installed')"
+          # Informational, not asserted. The runner image only has a Docker
+          # daemon when the RunnerDeployment leaves dockerEnabled at its default;
+          # jobs that build images need it, this smoke test does not.
+          echo "docker : $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'no daemon')"
+
+      - name: Confirm the checkout landed
+        run: |
+          set -euo pipefail
+          test -f README.md
+          echo "checked out $(git rev-parse --short HEAD) with $(git ls-files | wc -l) tracked files"

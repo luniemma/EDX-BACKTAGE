@@ -1,0 +1,51 @@
+# Workloads that make up the Xeta AI Platform. Modelled from
+# kubernetes/ and terraform/modules/ in luniemma/xeta-ai-platform.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: apim-shg
+  description: Azure APIM Self-Hosted Gateway — public entrypoint, terminates HTTPS and speaks mTLS to LiteLLM.
+  annotations:
+    github.com/project-slug: luniemma/xeta-ai-platform
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/guests
+  system: xeta-ai-platform
+  providesApis:
+    - xeta-llm-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: litellm-proxy
+  description: LiteLLM proxy on EKS (private subnets). Routes model calls to Bedrock, caches in ElastiCache.
+  annotations:
+    github.com/project-slug: luniemma/xeta-ai-platform
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/guests
+  system: xeta-ai-platform
+  dependsOn:
+    - resource:default/xeta-cache
+    - resource:default/xeta-prompt-logs
+    - resource:default/bedrock
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: xeta-llm-api
+  description: OpenAI-compatible LLM endpoint exposed through APIM.
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/guests
+  system: xeta-ai-platform
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: Xeta LLM API
+      version: "1.0"
+      description: See the platform repo for the authoritative specification.
+    paths: {}

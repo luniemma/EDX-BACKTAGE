@@ -115,6 +115,22 @@ catalog:
       rules:
         - allow: [Template]
 
+    # The golden path: scaffolds a service plus its ArgoCD Application and
+    # Crossplane registry claim. See templates/golden-path-service.
+    - type: file
+      target: ../../templates/golden-path-service/template.yaml
+      rules:
+        - allow: [Template]
+
+    # The Xeta AI Platform (luniemma/xeta-ai-platform) — a separate repo,
+    # described here rather than vendored.
+    - type: file
+      target: ../../catalog/xeta-ai-platform/system.yaml
+    - type: file
+      target: ../../catalog/xeta-ai-platform/components.yaml
+    - type: file
+      target: ../../catalog/xeta-ai-platform/resources.yaml
+
     # Local example organizational data
     - type: file
       target: ../../examples/org.yaml

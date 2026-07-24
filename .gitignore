@@ -31,3 +31,6 @@ coverage/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# Separate repo (luniemma/xeta-ai-platform) checked out here; not vendored.
+RTXsample/

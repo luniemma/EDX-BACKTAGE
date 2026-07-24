@@ -1,0 +1,5 @@
+# Local-only Terraform state.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

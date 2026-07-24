@@ -1,0 +1,44 @@
+# Platform-owned API: teams request an encrypted S3 bucket via a namespaced
+# ObjectStore claim without touching AWS directly.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xobjectstores.platform.xeta.io
+spec:
+  group: platform.xeta.io
+  names:
+    kind: XObjectStore
+    plural: xobjectstores
+  claimNames:
+    kind: ObjectStore
+    plural: objectstores
+  defaultCompositionRef:
+    name: objectstore-aws
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    region:
+                      type: string
+                      default: us-east-1
+                    versioning:
+                      type: boolean
+                      default: true
+                  required: []
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                bucketName:
+                  type: string
