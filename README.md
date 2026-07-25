@@ -74,6 +74,7 @@ deploy/
   helm/backstage/         # Helm chart
   argocd/                 # ArgoCD AppProjects, Applications, ApplicationSet
   crossplane/             # Crossplane install, XRDs, Compositions
+  runners/                # self-hosted GitHub Actions runners (see its README)
 terraform/                # ECR, GitHub OIDC roles, remote state
 ```
 
