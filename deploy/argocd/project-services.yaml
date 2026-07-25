@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: services
+  namespace: argocd
+spec:
+  description: Services scaffolded by the golden-path template
+  # Scaffolded services each live in their own repo, so this cannot be an exact
+  # list the way the backstage project's is. It stays scoped to the org — an
+  # Application pointing anywhere else is rejected rather than quietly synced.
+  sourceRepos:
+    - https://github.com/luniemma/*
+  # Services get one namespace per environment, named <service>-<env>. The
+  # golden-path template only offers dev and staging; prod deliberately is not
+  # self-service, so there is no '*-prod' destination here.
+  destinations:
+    - namespace: "*-dev"
+      server: https://kubernetes.default.svc
+    - namespace: "*-staging"
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  # Deliberately off, unlike the backstage project. Every service namespace
+  # accumulates resources nobody declared (cert-manager Secrets, StatefulSet
+  # PVCs), and warning about them once per service is noise that trains people
+  # to ignore the condition.
+  orphanedResources:
+    warn: false

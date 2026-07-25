@@ -1,0 +1,28 @@
+# Where this service deploys, in the shape the platform's ApplicationSet reads.
+#
+# CI copies this file into the platform repo at
+# gitops/services/${{ values.name }}/${{ values.deployEnvironment }}/config.yaml
+# on every green build of main, with image.tag set to the commit it just built.
+# ArgoCD turns that file into an Application. Nobody applies anything by hand.
+#
+# This file is the knob: edit it here, open a PR, and the next build carries the
+# change through. CI only ever overwrites image.tag.
+service:
+  name: ${{ values.name }}
+  env: ${{ values.deployEnvironment }}
+  namespace: ${{ values.name }}-${{ values.deployEnvironment }}
+
+source:
+  # The chart stays in this repo. The ledger records which version of it runs,
+  # not a copy of the manifests.
+  repoURL: https://github.com/${{ values.destination.owner }}/${{ values.destination.repo }}.git
+  targetRevision: main
+  path: deploy/helm
+
+image:
+  # Provisioned by the ServiceRegistry claim in deploy/serviceregistry.yaml —
+  # the Composition names the ECR repository after the service.
+  repository: 724772096574.dkr.ecr.us-east-1.amazonaws.com/${{ values.name }}
+  # Placeholder only. Nothing deploys until the first build replaces it, which
+  # is deliberate: the entry should never point at an image that does not exist.
+  tag: "0.0.0-bootstrap"
