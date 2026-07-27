@@ -10,7 +10,7 @@ metadata:
       title: Crossplane claim
 spec:
   type: cache
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform
 ---
 apiVersion: backstage.io/v1alpha1
@@ -23,7 +23,7 @@ metadata:
       title: Crossplane claim
 spec:
   type: s3-bucket
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform
 ---
 apiVersion: backstage.io/v1alpha1
@@ -33,5 +33,5 @@ metadata:
   description: Amazon Bedrock — the model backend LiteLLM routes to.
 spec:
   type: ai-model-service
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform

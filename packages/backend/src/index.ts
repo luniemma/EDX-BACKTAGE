@@ -29,6 +29,16 @@ backend.add(import('@backstage/plugin-auth-backend'));
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // See https://backstage.io/docs/auth/guest/provider
 
+// GitHub sign-in. The package was already a dependency but was never
+// registered, so the provider did not exist at runtime however much
+// auth.providers.github config was added.
+//
+// Guest stays registered above for now, deliberately: removing it before
+// GitHub is proven working locks everyone out. Delete it once sign-in works —
+// see docs/ENTERPRISE-SETUP.md Step 10, which also covers the manually patched
+// ConfigMap key that keeps guest alive even after this line goes.
+backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
+
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));
 backend.add(

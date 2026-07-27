@@ -6,10 +6,18 @@
 # copies in a prebuilt bundle. Excluding source here instead makes `yarn tsc`
 # fail with "TS18003: No inputs were found in config file".
 .git
+# Nested repositories keep their own .git, and the bare `.git` pattern above
+# only matches the context root.
+**/.git
 .github
 node_modules
 packages/*/node_modules
 plugins/*/node_modules
+# A separate 1.5 GB git repository that happens to live in this directory. It is
+# gitignored, so it never reaches a commit — but .gitignore has no bearing on the
+# Docker build context, and without this line every `docker build` uploads all
+# 1.5 GB to the daemon before the first instruction runs.
+RTXsample
 .yarn/cache
 .yarn/install-state.gz
 dist

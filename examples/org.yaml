@@ -1,17 +1,38 @@
 ---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-user
+#
+# Placeholder org data. Once a real identity provider is wired up these entities
+# come from the GitHub org or Entra ID on a schedule and this file goes away —
+# hand edits would be overwritten at the next sync. See docs/ENTERPRISE-SETUP.md
+# Step 6.
 apiVersion: backstage.io/v1alpha1
 kind: User
 metadata:
   name: guest
 spec:
-  memberOf: [guests]
+  # Guest sign-in resolves to this user, so it has to be a member of the owning
+  # group. Otherwise sign-in succeeds and "my services" is empty for everyone.
+  memberOf: [developers]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  # Must match the GitHub login exactly — the github provider's sign-in resolver
+  # is usernameMatchingUserEntityName, so it looks for a User entity of this
+  # name and fails sign-in with "unable to resolve user identity" if absent.
+  # Placeholder until GithubOrgEntityProvider ingests the real org (Step 6).
+  name: luniemma
+spec:
+  profile:
+    displayName: luniemma
+  memberOf: [developers]
 ---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-group
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
-  name: guests
+  name: developers
+  description: Everyone building on the platform. Default owner for catalog entities.
 spec:
   type: team
   children: []

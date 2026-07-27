@@ -7,6 +7,10 @@ app.kubernetes.io/name: {{ include "service.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{- define "service.postgresFullname" -}}
+{{ printf "%s-postgres" (include "service.name" .) | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
 {{- define "service.labels" -}}
 {{ include "service.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}

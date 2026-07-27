@@ -7,6 +7,13 @@ on:
       - "packages/**"
       - "plugins/**"
       - "examples/**"
+      # The Dockerfile copies templates/ into the image, so a template change
+      # only reaches the portal via a rebuild. Without this line, editing a
+      # software template produces no build and the change lands whenever some
+      # unrelated commit happens to trigger one.
+      - "templates/**"
+      - "mkdocs.yml"
+      - "docs/**"
       - "app-config*.yaml"
       - "package.json"
       - "yarn.lock"

@@ -107,6 +107,12 @@ secrets:
   postgresPassword: "change-me"
   # GitHub PAT for catalog ingestion / scaffolder. Leave empty to disable.
   githubToken: ""
+  # GitHub OAuth app credentials for sign-in. Leave empty here — pass them at
+  # install time with `--set`, or supply them through secrets.existingSecret so
+  # they never touch a values file. The keys they become, AUTH_GITHUB_CLIENT_ID
+  # and AUTH_GITHUB_CLIENT_SECRET, are what app-config.production.yaml reads.
+  githubClientId: ""
+  githubClientSecret: ""
   # Shared secret for backend-to-backend auth. Generate with `openssl rand -base64 32`.
   backendSecret: "change-me-to-a-long-random-string"
 

@@ -29,8 +29,44 @@ backend:
       #     $file: <file-path>/ca/server.crt
 
 auth:
+  environment: production
   providers:
+    # Guest is still here on purpose. Remove it once GitHub sign-in is verified
+    # working — see docs/ENTERPRISE-SETUP.md Step 10.
     guest: {}
+
+    github:
+      production:
+        # Both come from the Secret, never from a values file. Set them with
+        # `--set secrets.githubClientId=...` for a local trial, or through the
+        # external store via ExternalSecret for anything shared.
+        clientId: ${AUTH_GITHUB_CLIENT_ID}
+        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            # Maps the GitHub login to a User entity of the same name. It
+            # resolves against the catalog, so a matching User must exist or
+            # sign-in fails with "unable to resolve user identity" — examples/
+            # org.yaml provides `guest` today; real users come from
+            # GithubOrgEntityProvider (Step 6).
+            - resolver: usernameMatchingUserEntityName
+
+techdocs:
+  builder: 'local'
+  generator:
+    # 'local' rather than the 'docker' used in app-config.yaml. The backend
+    # shells out to mkdocs, which the runtime image installs into a virtualenv
+    # (see Dockerfile). 'docker' would try to START a container, and there is no
+    # Docker daemon inside this pod — docs builds then fail at request time
+    # rather than at deploy time, which is why the default looks fine and isn't.
+    runIn: 'local'
+  publisher:
+    # Generated docs are written to disk. The container runs with
+    # readOnlyRootFilesystem, so this has to be the emptyDir the chart mounts at
+    # /tmp — anywhere else and the build fails with EROFS.
+    type: 'local'
+    local:
+      publishDirectory: '/tmp/techdocs'
 
 catalog:
   # Overrides the default list locations from app-config.yaml as these contain example data.

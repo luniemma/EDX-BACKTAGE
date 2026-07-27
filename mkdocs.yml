@@ -1,0 +1,16 @@
+site_name: EDX-BACKTAGE
+site_description: Backstage developer portal and the platform that delivers it
+
+docs_dir: docs
+
+plugins:
+  # Provided by mkdocs-techdocs-core, installed into the runtime image's
+  # virtualenv. Without this plugin the build succeeds but the output does not
+  # render correctly in Backstage's TechDocs viewer.
+  - techdocs-core
+
+nav:
+  - Home: index.md
+  - Enterprise setup: ENTERPRISE-SETUP.md
+  - Enterprise roadmap: ENTERPRISE-ROADMAP.md
+  - Xeta deployment: XETA-DEPLOYMENT.md

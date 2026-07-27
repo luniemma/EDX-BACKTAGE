@@ -44,8 +44,30 @@ FROM node:22-bookworm-slim AS runtime
 
 ENV PYTHON=/usr/bin/python3
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 g++ build-essential libsqlite3-dev ca-certificates \
+      python3 python3-pip python3-venv g++ build-essential libsqlite3-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# TechDocs generation is a Python toolchain: Backstage shells out to `mkdocs`.
+# With `techdocs.generator.runIn: docker` the backend would try to start a
+# container instead, and there is no Docker daemon inside this pod — so docs
+# builds fail at runtime, not at deploy time. Installing mkdocs here is what
+# makes `runIn: local` work.
+#
+# A virtualenv rather than a plain `pip install`: Debian bookworm enforces
+# PEP 668, so installing into the system interpreter fails with
+# "externally-managed-environment". The alternative, --break-system-packages,
+# does exactly what it says to a shared interpreter.
+#
+# Pin for reproducible builds:  docker build --build-arg TECHDOCS_CORE_VERSION=1.5.1 .
+ARG TECHDOCS_CORE_VERSION=
+RUN python3 -m venv /opt/techdocs \
+ && /opt/techdocs/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/techdocs/bin/pip install --no-cache-dir \
+      "mkdocs-techdocs-core${TECHDOCS_CORE_VERSION:+==${TECHDOCS_CORE_VERSION}}" \
+ && /opt/techdocs/bin/mkdocs --version
+
+# Puts `mkdocs` on PATH for the backend process, which invokes it by name.
+ENV PATH="/opt/techdocs/bin:${PATH}"
 
 USER node
 WORKDIR /app

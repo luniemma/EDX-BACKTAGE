@@ -34,6 +34,23 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.service.targetPort | quote }}
+            {{- if .Values.postgres.enabled }}
+            # Standard libpq variable names, so most Postgres clients pick these
+            # up with no connection string in application code.
+            - name: PGHOST
+              value: {{ include "service.postgresFullname" . }}
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: {{ .Values.postgres.auth.username | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.postgres.auth.database | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.auth.existingSecret }}
+                  key: {{ .Values.postgres.auth.secretKey }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.path }}

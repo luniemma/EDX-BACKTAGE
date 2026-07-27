@@ -13,35 +13,35 @@ files, config, and cluster objects.
 
 ## Contents
 
-**Part 0 — [Prerequisites](#part-0--prerequisites)** · [Rules](#the-rules-this-guide-enforces)
+**Part 0 — [Prerequisites](#part-0-prerequisites)** · [Rules](#the-rules-this-guide-enforces)
 
 **Part 1 — Platform**
-[1. External database](#step-1--move-off-the-in-cluster-database) ·
-[2. Secret management](#step-2--stand-up-secret-management) ·
-[3. Remediate committed secrets](#step-3--remediate-what-is-already-committed) ·
-[4. Base URLs](#step-4--set-externally-reachable-base-urls) ·
-[5. Deploy](#step-5--deploy)
+[1. External database](#step-1-move-off-the-in-cluster-database) ·
+[2. Secret management](#step-2-stand-up-secret-management) ·
+[3. Remediate committed secrets](#step-3-remediate-what-is-already-committed) ·
+[4. Base URLs](#step-4-set-externally-reachable-base-urls) ·
+[5. Deploy](#step-5-deploy)
 
 **Part 2 — Identity**
-[6. Users and groups](#step-6--ingest-users-and-groups) ·
-[7. GitHub OAuth](#step-7--github-oauth) ·
-[8. Azure / Entra ID](#step-8--azure--entra-id) ·
-[9. Sign-in page](#step-9--add-the-frontend-sign-in-page) ·
-[10. Remove guest](#step-10--remove-guest-access) ·
-[11. AWS workload identity](#step-11--aws-workload-identity-irsa) ·
-[12. Permission policy](#step-12--replace-the-allow-all-permission-policy)
+[6. Users and groups](#step-6-ingest-users-and-groups) ·
+[7. GitHub OAuth](#step-7-github-oauth) ·
+[8. Azure / Entra ID](#step-8-azure-and-entra-id) ·
+[9. Sign-in page](#step-9-add-the-frontend-sign-in-page) ·
+[10. Remove guest](#step-10-remove-guest-access) ·
+[11. AWS workload identity](#step-11-aws-workload-identity-irsa) ·
+[12. Permission policy](#step-12-replace-the-allow-all-permission-policy)
 
 **Part 3 — Governance**
-[13. Ownership model](#step-13--fix-the-ownership-model) ·
-[14. Groups and organizations](#step-14--structure-groups-and-organizations) ·
-[15. Keeping it true](#step-15--keep-it-true-over-time)
+[13. Ownership model](#step-13-fix-the-ownership-model) ·
+[14. Groups and organizations](#step-14-structure-groups-and-organizations) ·
+[15. Keeping it true](#step-15-keep-it-true-over-time)
 
 **Reference** — [What the backend already runs](#what-the-backend-already-runs) ·
 [What the frontend already runs](#what-the-frontend-already-runs) ·
 [How changes reach the cluster](#how-changes-reach-the-cluster)
 
 [Troubleshooting](#troubleshooting) ·
-[Appendix: AWS as an identity provider](#appendix--aws-as-an-identity-provider)
+[Appendix: AWS as an identity provider](#appendix-aws-as-an-identity-provider)
 
 ---
 
@@ -58,8 +58,8 @@ rather than "change a setting":
 | Frontend `SignInPage` | **Not configured** in `packages/app/src/App.tsx` |
 | `auth.providers` in production | `guest: {}` only |
 | User/Group entities | Static `examples/org.yaml`, not the real org |
-| Ownership | Everything owned by `group:default/guests` — see [Step 13](#step-13--fix-the-ownership-model) |
-| Secrets | **Committed to git** — see [Step 3](#step-3--remediate-what-is-already-committed) |
+| Ownership | Everything owned by `group:default/guests` — see [Step 13](#step-13-fix-the-ownership-model) |
+| Secrets | **Committed to git** — see [Step 3](#step-3-remediate-what-is-already-committed) |
 
 One thing works in your favour: the Deployment uses `envFrom` on the whole
 ConfigMap and whole Secret
@@ -76,12 +76,12 @@ policy, not missing packages:
 
 | Area | Registered | Enterprise gap |
 | --- | --- | --- |
-| Catalog | `catalog-backend` + scaffolder-entity-model, logs | No org ingestion — [Step 6](#step-6--ingest-users-and-groups) |
+| Catalog | `catalog-backend` + scaffolder-entity-model, logs | No org ingestion — [Step 6](#step-6-ingest-users-and-groups) |
 | Scaffolder | `scaffolder-backend` + github, notifications | — |
-| TechDocs | `techdocs-backend` | Local builder cannot run in-cluster — [Step 11](#step-11--aws-workload-identity-irsa) |
-| Auth | `auth-backend` + **guest only** | Real providers — [7](#step-7--github-oauth), [8](#step-8--azure--entra-id) |
-| Permissions | `permission-backend` + **allow-all-policy** | **Every check returns allow** — [Step 12](#step-12--replace-the-allow-all-permission-policy) |
-| Search | `search-backend`, pg engine, catalog + techdocs collators | Postgres-backed, so [Step 1](#step-1--move-off-the-in-cluster-database) matters |
+| TechDocs | `techdocs-backend` | Local builder cannot run in-cluster — [Step 11](#step-11-aws-workload-identity-irsa) |
+| Auth | `auth-backend` + **guest only** | Real providers — [7](#step-7-github-oauth), [8](#step-8-azure-and-entra-id) |
+| Permissions | `permission-backend` + **allow-all-policy** | **Every check returns allow** — [Step 12](#step-12-replace-the-allow-all-permission-policy) |
+| Search | `search-backend`, pg engine, catalog + techdocs collators | Postgres-backed, so [Step 1](#step-1-move-off-the-in-cluster-database) matters |
 | Kubernetes | `kubernetes-backend` | Inert without a `kubernetes:` config block and cluster credentials |
 | Notifications / Signals | both registered | — |
 | MCP actions | `mcp-actions-backend` | Exposes scaffolder actions over MCP — review before production |
@@ -155,7 +155,7 @@ override here.
 then `nav.rest({ sortBy: 'title' })` for everything else, so a newly discovered
 plugin appears in the sidebar automatically without an edit.
 
-[Step 9](#step-9--add-the-frontend-sign-in-page) uses this same pattern for the
+[Step 9](#step-9-add-the-frontend-sign-in-page) uses this same pattern for the
 sign-in page.
 
 **Branding is still the scaffold default.** `app.title` reads
@@ -165,7 +165,7 @@ sign-in page.
 
 Everything below is delivered through Helm, ArgoCD and GitHub Actions — nothing
 in this guide is applied by hand except the one-time bootstrap in
-[Step 5](#step-5--deploy). But there are **two different paths**, with very
+[Step 5](#step-5-deploy). But there are **two different paths**, with very
 different latency, and knowing which one a given change takes is the difference
 between "it deployed" and "ArgoCD says Synced and nothing happened".
 
@@ -182,7 +182,7 @@ between "it deployed" and "ArgoCD says Synced and nothing happened".
 are **copied into the image** ([Dockerfile:71-75](../Dockerfile#L71-L75)), and
 the chart mounts no ConfigMap for them — its only volume is an `emptyDir` at
 `/tmp`. So adding an auth provider in
-[Step 7](#step-7--github-oauth) is a code change in every practical sense: commit
+[Step 7](#step-7-github-oauth) is a code change in every practical sense: commit
 it, let `cd-dev.yml` build and push the image, let it bump `image.tag` in
 `values-dev.yaml`, and let ArgoCD sync that. Editing `app-config.production.yaml`
 and waiting for ArgoCD alone will never take effect.
@@ -206,7 +206,7 @@ store; only the pointer is in git.
 **Bootstrap is the exception.** Installing ArgoCD, cert-manager and ESO, and
 applying the first `Application`, cannot themselves be GitOps-managed — the
 loop has to start somewhere. Keep that set as small as
-[Step 5](#step-5--deploy), and manage everything after it declaratively; an
+[Step 5](#step-5-deploy), and manage everything after it declaratively; an
 app-of-apps pattern reduces the hand-applied set to a single root Application.
 
 ---
@@ -218,24 +218,24 @@ skipped later violates one of them.
 
 1. **No secret value in git — in any environment, including dev.** One
    mechanism everywhere: an external store owns the material.
-   ([Step 2](#step-2--stand-up-secret-management))
+   ([Step 2](#step-2-stand-up-secret-management))
 2. **No ad-hoc cluster objects.** If a Secret exists and no manifest or store
    entry explains it, that is an incident, not a configuration.
-   ([Step 2](#step-2--stand-up-secret-management))
+   ([Step 2](#step-2-stand-up-secret-management))
 3. **Identity before providers.** Sign-in resolvers need `User` entities to
    resolve *to*. Ingest users first, or sign-in succeeds and ownership silently
-   resolves to nothing. ([Step 6](#step-6--ingest-users-and-groups))
+   resolves to nothing. ([Step 6](#step-6-ingest-users-and-groups))
 4. **Federate, never store long-lived credentials.** IRSA and OIDC over static
-   keys, every time. ([Step 11](#step-11--aws-workload-identity-irsa))
+   keys, every time. ([Step 11](#step-11-aws-workload-identity-irsa))
 5. **Groups own things; the directory owns groups.** Never make a person the
    owner — that entity is orphaned the day they leave. And never hand-edit
    `org.yaml`, because the next sync overwrites it.
-   ([Step 13](#step-13--fix-the-ownership-model),
-   [14](#step-14--structure-groups-and-organizations))
+   ([Step 13](#step-13-fix-the-ownership-model),
+   [14](#step-14-structure-groups-and-organizations))
 
 ---
 
-# Part 0 — Prerequisites
+# Part 0: Prerequisites
 
 ## Tools
 
@@ -268,11 +268,11 @@ someone else's approval.
 
 | Access | Needed for |
 | --- | --- |
-| Admin on the GitHub org | OAuth app + `read:org` token ([7](#step-7--github-oauth), [6](#step-6--ingest-users-and-groups)) |
-| Entra ID app registration rights | Azure provider ([8](#step-8--azure--entra-id)) |
-| Write access to the secret store | Every step from [2](#step-2--stand-up-secret-management) on |
-| IAM permission to create roles + trust policies | IRSA ([11](#step-11--aws-workload-identity-irsa)) |
-| DNS control for the Backstage hostname | [4](#step-4--set-externally-reachable-base-urls), and OAuth callbacks |
+| Admin on the GitHub org | OAuth app + `read:org` token ([7](#step-7-github-oauth), [6](#step-6-ingest-users-and-groups)) |
+| Entra ID app registration rights | Azure provider ([8](#step-8-azure-and-entra-id)) |
+| Write access to the secret store | Every step from [2](#step-2-stand-up-secret-management) on |
+| IAM permission to create roles + trust policies | IRSA ([11](#step-11-aws-workload-identity-irsa)) |
+| DNS control for the Backstage hostname | [4](#step-4-set-externally-reachable-base-urls), and OAuth callbacks |
 
 ## Verify prerequisites
 
@@ -296,9 +296,9 @@ helm upgrade --install external-secrets external-secrets/external-secrets \
 
 ---
 
-# Part 1 — Platform
+# Part 1: Platform
 
-## Step 1 — Move off the in-cluster database
+## Step 1: Move off the in-cluster database
 
 **Goal:** production data on a managed instance with backups and failover.
 
@@ -335,7 +335,7 @@ helm template backstage deploy/helm/backstage \
   -f deploy/helm/backstage/values-prod.yaml | grep -A2 POSTGRES_HOST
 ```
 
-## Step 2 — Stand up secret management
+## Step 2: Stand up secret management
 
 **Goal:** no credential in this repository, in any environment.
 
@@ -415,7 +415,7 @@ kubectl get secret backstage-secrets -n backstage-prod \
   -o json | jq -r '.data | keys[]'                                   # want every key above
 ```
 
-## Step 3 — Remediate what is already committed
+## Step 3: Remediate what is already committed
 
 **Goal:** the secrets currently in git are rotated and removed.
 
@@ -443,7 +443,7 @@ grep -rn "postgresPassword\|backendSecret\|password:" deploy/helm/backstage/valu
 # expect no assigned values — keys removed entirely
 ```
 
-## Step 4 — Set externally reachable base URLs
+## Step 4: Set externally reachable base URLs
 
 **Goal:** the browser can reach exactly the URL Backstage advertises.
 
@@ -487,7 +487,7 @@ curl -s https://backstage.example.com/api/app/config | grep -o '"baseUrl":"[^"]*
 # both must show the external URL, never localhost
 ```
 
-## Step 5 — Deploy
+## Step 5: Deploy
 
 ```bash
 kubectl apply -f deploy/argocd/project.yaml
@@ -510,7 +510,7 @@ at **startup** when a `${VAR}` resolves empty, which is deliberate. Check with
 
 ---
 
-# Part 2 — Identity
+# Part 2: Identity
 
 ## How Backstage auth fits together
 
@@ -524,7 +524,7 @@ rather than clear:
 
 Steps 6–9 deliver these in the only order that works.
 
-## Step 6 — Ingest users and groups
+## Step 6: Ingest users and groups
 
 **Goal:** real `User` and `Group` entities exist before any provider points at
 them.
@@ -562,7 +562,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 Non-zero means resolvers have targets. Zero means do not proceed to Step 7.
 
-## Step 7 — GitHub OAuth
+## Step 7: GitHub OAuth
 
 **Goal:** users sign in with GitHub.
 
@@ -612,7 +612,7 @@ auth:
 curl -s https://backstage.example.com/api/auth/github/start | head -5
 ```
 
-## Step 8 — Azure / Entra ID
+## Step 8: Azure and Entra ID
 
 **Goal:** users sign in with Microsoft. Skip if GitHub is your only IdP.
 
@@ -656,7 +656,7 @@ Entra identities are email-shaped, so match on profile email.
 `usernameMatchingUserEntityName` will not resolve against `user@company.com` —
 using GitHub's resolver here is a common and confusing mistake.
 
-## Step 9 — Add the frontend sign-in page
+## Step 9: Add the frontend sign-in page
 
 **Goal:** users can actually see the providers.
 
@@ -738,7 +738,7 @@ asking.
 appear — that proves the resolver matched a `User` entity, not just that OAuth
 succeeded.
 
-## Step 10 — Remove guest access
+## Step 10: Remove guest access
 
 **Goal:** anonymous access is gone.
 
@@ -773,14 +773,14 @@ kubectl get cm backstage -n backstage-prod \
 # want empty output
 ```
 
-## Step 11 — AWS workload identity (IRSA)
+## Step 11: AWS workload identity (IRSA)
 
 **Goal:** Backstage calls AWS with no stored credentials.
 
 AWS is **not** a third sign-in button — treating it as one is the usual source
 of confusion. It appears here because Backstage needs AWS access for ECR and S3,
 not because users authenticate with it. For AWS as an IdP see the
-[appendix](#appendix--aws-as-an-identity-provider).
+[appendix](#appendix-aws-as-an-identity-provider).
 
 > **Rule 4.** Static access keys are long-lived, do not rotate themselves, and a
 > leaked pair stays valid until someone notices. Federate.
@@ -851,7 +851,7 @@ kubectl exec -n backstage-prod deploy/backstage -- \
 
 ---
 
-## Step 12 — Replace the allow-all permission policy
+## Step 12: Replace the allow-all permission policy
 
 **Goal:** authorisation actually restricts something.
 
@@ -903,13 +903,13 @@ is still false.
 
 ---
 
-# Part 3 — Governance
+# Part 3: Governance
 
 Steps 6–12 make identity real. Governance is what keeps it true six months
 later: who owns what, how teams are modelled, and what happens when people join,
 move and leave.
 
-## Step 13 — Fix the ownership model
+## Step 13: Fix the ownership model
 
 **Goal:** every entity has a resolvable owner, expressed one way.
 
@@ -951,7 +951,7 @@ grep -rn "owner:" catalog/ examples/ templates/ catalog-info.yaml \
 # expect no output
 ```
 
-## Step 14 — Structure groups and organizations
+## Step 14: Structure groups and organizations
 
 **Goal:** a group tree that mirrors how the company actually works.
 
@@ -989,7 +989,7 @@ Conventions worth fixing now rather than after a thousand entities exist:
   day they leave, which is precisely when you need to know who owns it
 
 > **These entities are generated, not written.** Once
-> [Step 6](#step-6--ingest-users-and-groups) is running, GitHub teams or Entra
+> [Step 6](#step-6-ingest-users-and-groups) is running, GitHub teams or Entra
 > groups produce them on a schedule. Hand-editing `org.yaml` afterwards means
 > your edits are overwritten at the next refresh — treat the upstream directory
 > as the source of truth and fix structure there.
@@ -1014,7 +1014,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 Expect a tree, not a flat list of orphans.
 
-## Step 15 — Keep it true over time
+## Step 15: Keep it true over time
 
 **Goal:** governance survives contact with joiners, movers and leavers.
 
@@ -1051,7 +1051,7 @@ one-line PR, so the work is deciding *who accepts* the entity — make that a
 required reviewer on the owning group, not an implicit consequence of a merge.
 
 **Connect groups to permissions.** Group membership is what makes
-[Step 12](#step-12--replace-the-allow-all-permission-policy) meaningful: policies
+[Step 12](#step-12-replace-the-allow-all-permission-policy) meaningful: policies
 express "owners may delete their own entities" and resolve it through the
 `ownedBy` relation. Without the hierarchy from Step 14, every policy degrades to
 allow-all or deny-all.
@@ -1069,16 +1069,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 | Symptom | Cause |
 | --- | --- |
-| Redirect loop after authorising | `APP_BASE_URL` / `BACKEND_BASE_URL` do not match the URL the browser used ([4](#step-4--set-externally-reachable-base-urls)) |
+| Redirect loop after authorising | `APP_BASE_URL` / `BACKEND_BASE_URL` do not match the URL the browser used ([4](#step-4-set-externally-reachable-base-urls)) |
 | `Failed to sign in, unable to resolve user identity` | No matching `User` entity — Step 6 skipped or incomplete |
 | Callback 404s after the consent screen | Callback URL missing the `/handler/frame` suffix |
 | Sign-in works, ownership shows nothing | Users ingested, groups not — add group ingestion |
-| Guest still available after removal | Manually patched ConfigMap key ([10](#step-10--remove-guest-access)) |
+| Guest still available after removal | Manually patched ConfigMap key ([10](#step-10-remove-guest-access)) |
 | `Missing required config value at 'auth.providers...'` | Store key absent, so `${VAR}` resolved empty |
 | Pod crash-loops right after a rollout | Same cause — Backstage fails at startup by design |
-| Rotated a secret, old value still in use | No Reloader; pod still holds the old env ([2](#step-2--stand-up-secret-management)) |
+| Rotated a secret, old value still in use | No Reloader; pod still holds the old env ([2](#step-2-stand-up-secret-management)) |
 
-## Appendix — AWS as an identity provider
+## Appendix: AWS as an identity provider
 
 There is no first-party AWS sign-in provider. If users live in **Cognito** or
 **IAM Identity Center**, expose an OIDC application and use the generic `oidc`
@@ -1106,7 +1106,7 @@ whenever the standard is not GitHub or Entra.
 
 ## After this guide
 
-Writing the actual permission policy. [Step 12](#step-12--replace-the-allow-all-permission-policy)
+Writing the actual permission policy. [Step 12](#step-12-replace-the-allow-all-permission-policy)
 removes the allow-all module and turns the framework on; deciding what each role
 may do is a design exercise, not a config change.
 [ENTERPRISE-ROADMAP.md](ENTERPRISE-ROADMAP.md) A3 covers the shape of that work.
