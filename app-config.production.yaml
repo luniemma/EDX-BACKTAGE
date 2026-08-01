@@ -31,10 +31,9 @@ backend:
 auth:
   environment: production
   providers:
-    # Guest is still here on purpose. Remove it once GitHub sign-in is verified
-    # working — see docs/ENTERPRISE-SETUP.md Step 10.
-    guest: {}
-
+    # No guest provider. The backend no longer registers the module either —
+    # see packages/backend/src/index.ts, which is the change that actually
+    # disables it.
     github:
       production:
         # Both come from the Secret, never from a values file. Set them with

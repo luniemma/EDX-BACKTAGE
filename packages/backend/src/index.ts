@@ -26,17 +26,17 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
-backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
-// See https://backstage.io/docs/auth/guest/provider
 
-// GitHub sign-in. The package was already a dependency but was never
-// registered, so the provider did not exist at runtime however much
-// auth.providers.github config was added.
-//
-// Guest stays registered above for now, deliberately: removing it before
-// GitHub is proven working locks everyone out. Delete it once sign-in works —
-// see docs/ENTERPRISE-SETUP.md Step 10, which also covers the manually patched
-// ConfigMap key that keeps guest alive even after this line goes.
+// Guest sign-in is deliberately NOT registered. Unregistering the module is
+// what actually disables it — removing the config alone is not enough, because
+// the live ConfigMap carries a hand-patched
+// APP_CONFIG_auth_providers_guest_dangerouslyAllowOutsideDevelopment key that
+// ArgoCD reports as Synced (ServerSideApply lets another field manager own it).
+// With no module registered, that key has nothing to enable.
+
+// GitHub is now the only way in. The package was already a dependency but had
+// never been registered, so the provider did not exist at runtime however much
+// auth.providers.github config was present.
 backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 
 // catalog plugin

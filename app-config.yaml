@@ -80,8 +80,16 @@ techdocs:
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
   providers:
-    # See https://backstage.io/docs/auth/guest/provider
-    guest: {}
+    # Guest is gone. packages/backend/src/index.ts no longer registers the
+    # guest provider module, so declaring it here would be config for something
+    # that does not exist at runtime — the exact pattern that made the GitHub
+    # provider appear configured for months while doing nothing.
+    #
+    # Local `yarn start` therefore needs real credentials too. Export
+    # AUTH_GITHUB_CLIENT_ID and AUTH_GITHUB_CLIENT_SECRET from a GitHub OAuth
+    # app whose callback points at http://localhost:7007, and add the matching
+    # provider block below.
+    {}
   # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
   # to learn more about client id metadata documents
   clientIdMetadataDocuments:

@@ -69,6 +69,16 @@ RUN python3 -m venv /opt/techdocs \
 # Puts `mkdocs` on PATH for the backend process, which invokes it by name.
 ENV PATH="/opt/techdocs/bin:${PATH}"
 
+# Nothing here uses npm: the entrypoint is `node packages/backend` and package
+# management goes through Yarn 4 from .yarn/releases. Shipping it only donates
+# npm's bundled dependency tree to the scanner — its vendored `tar` is what
+# failed the CRITICAL gate in cd-dev (CVE-2026-59873), and the node base image
+# has no patched release for it.
+#
+# Must run before `USER node`: /usr/local is root-owned, so an unprivileged
+# layer can't remove this.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 USER node
 WORKDIR /app
 
