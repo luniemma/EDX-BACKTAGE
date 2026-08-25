@@ -46,12 +46,12 @@
     "react-router-dom": "^6.30.2"
   },
   "devDependencies": {
-    "@backstage/frontend-test-utils": "^0.6.2",
-    "@playwright/test": "^1.32.3",
+    "@backstage/frontend-test-utils": "^0.6.3",
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^9.0.0",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
-    "@testing-library/user-event": "^14.0.0",
+    "@testing-library/user-event": "^14.6.6",
     "@types/react-dom": "*",
     "cross-env": "^7.0.0"
   },
