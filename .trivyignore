@@ -6,3 +6,20 @@
 #   AVD-DS-0002                          (silence a misconfig rule id)
 #
 # Every entry should be justified in a comment. Prefer fixing over ignoring.
+
+# KSV-0109 -- "ConfigMap stores secrets".
+#
+# Fires on rendered/all.yaml for rhdh-developer-hub-app-config, on the keys
+# clientSecret, secret, password and token. Every one of those holds a shell
+# placeholder, not a value:
+#
+#   clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+#   secret:       ${BACKEND_SECRET}
+#   password:     ${POSTGRESQL_ADMIN_PASSWORD}
+#   token:        ${GITHUB_TOKEN}
+#
+# RHDH expands these at boot from env vars sourced out of Secrets, which is the
+# configuration mechanism the product documents -- there is no secret in the
+# ConfigMap to move. Trivy matches on key name and cannot see the indirection.
+# Re-check if app-config ever gains a key holding a literal.
+AVD-KSV-0109

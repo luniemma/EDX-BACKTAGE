@@ -75,6 +75,8 @@ jobs:
       - name: Render Helm chart for scanning
         run: |
           mkdir -p rendered
+          helm repo add rhdh https://redhat-developer.github.io/rhdh-chart
+          helm repo update
           helm dependency build deploy/helm/rhdh
           helm template rhdh deploy/helm/rhdh \
             -f deploy/helm/rhdh/values.yaml \
