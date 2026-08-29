@@ -1,0 +1,86 @@
+# Production: EKS behind ingress-nginx, RDS PostgreSQL, secrets managed
+# out-of-band (ESO / Sealed Secrets / Vault — this chart never creates them).
+
+global:
+  host: "backstage.example.com"
+
+  edx:
+    existingSecret: backstage-prod-secrets
+    logLevel: info
+
+  auth:
+    backend:
+      existingSecret: backstage-prod-secrets
+
+  postgresql:
+    auth:
+      existingSecret: backstage-prod-secrets
+      secretKeys:
+        adminPasswordKey: postgres-password
+
+backstage:
+  upstream:
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+        nginx.ingress.kubernetes.io/proxy-body-size: 1m
+      tls:
+        enabled: true
+        secretName: backstage-example-com-tls
+
+    postgresql:
+      enabled: false
+
+    backstage:
+      replicas: 3
+
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1.5Gi
+        limits:
+          cpu: "2"
+          memory: 3Gi
+          ephemeral-storage: 5Gi
+
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 20
+        targetCPUUtilizationPercentage: 70
+
+      pdb:
+        create: true
+        minAvailable: 2
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              # RHDH sets upstream.nameOverride to developer-hub, so this is the
+              # name half of the pod's standard labels; `backstage` would match
+              # nothing and the constraint would silently do nothing.
+              app.kubernetes.io/name: developer-hub
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
+
+      appConfig:
+        backend:
+          database:
+            client: pg
+            connection:
+              # Set to the production RDS endpoint.
+              host: ""
+              port: 5432
+              user: backstage
+
+        catalog:
+          # Prod reads catalog content from the same branch ArgoCD tracks
+          # (release/prod), so an entity edit on main does not reach production
+          # before the branch is promoted.
+          locations:
+            - type: url
+              target: https://github.com/luniemma/EDX-BACKTAGE/blob/release/prod/catalog/all.yaml

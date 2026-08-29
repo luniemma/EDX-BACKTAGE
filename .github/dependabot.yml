@@ -1,24 +1,17 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    groups:
-      dev-dependencies:
-        dependency-type: development
-        update-types: [minor, patch]
-      prod-dependencies:
-        dependency-type: production
-        update-types: [minor, patch]
-
+  # The npm and docker ecosystems went with the application source: RHDH ships
+  # as a prebuilt image whose contents Red Hat patches, and this repo no longer
+  # has a package.json or a Dockerfile for dependabot to read. The image tag is
+  # pinned by hand in deploy/helm/rhdh — see that chart's README for how to move
+  # it, and note that Chart.yaml appVersion and the catalog index tag have to
+  # move with it or CI fails.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
 
-  - package-ecosystem: docker
-    directory: /
+  - package-ecosystem: terraform
+    directory: /terraform
     schedule:
       interval: weekly

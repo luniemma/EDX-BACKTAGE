@@ -71,7 +71,7 @@ anything real.
 | ClusterIssuer `selfsigned-bootstrap` | Bootstraps the root only |
 | Certificate `local-ca-root` (cert-manager ns) | The root CA — 10 year lifetime |
 | ClusterIssuer `local-ca` | Signs leaf certs from that root |
-| Certificate `backstage-tls` (backstage-dev ns) | Leaf for the Backstage host, 90 day |
+| Certificate `backstage-tls` (rhdh-dev ns) | Leaf for the portal host, 90 day |
 | Certificate `argocd-tls` (argocd ns) | Leaf for the ArgoCD host, 90 day |
 | Ingress `argocd-server` (argocd ns) | Serves the ArgoCD UI over HTTPS |
 
@@ -134,19 +134,25 @@ kubectl get clusterissuer      # both True
 Check the Service actually has endpoints:
 
 ```bash
-kubectl get endpoints backstage -n backstage-dev
+kubectl get endpoints rhdh-developer-hub -n rhdh-dev
 ```
 
-If empty, the Service selector does not match any pod. This happens when the
-Deployment and Service come from different chart versions — the app tier
-selects on `app.kubernetes.io/component: backstage`, and a Deployment rendered
-before that label existed produces pods without it. The Deployment selector is
-immutable, so fixing it means deleting and recreating the Deployment.
+If empty, no pod is ready yet. Under RHDH that usually means the
+`install-dynamic-plugins` init container is still running or has failed — check
+it before assuming a selector problem:
 
-**Backstage loads but every API call 401s** — `APP_BASE_URL`/`BACKEND_BASE_URL`
-in `values-dev.yaml` must match exactly how the browser reaches the portal,
-**including the `:8443` port**. The frontend uses them verbatim; without the
+```bash
+kubectl -n rhdh-dev logs -l app.kubernetes.io/instance=rhdh -c install-dynamic-plugins
+```
+
+**The portal loads but every API call 401s** — `global.host` in
+`values-dev.yaml` must match exactly how the browser reaches the portal,
+**including the `:8443` port**. RHDH derives `app.baseUrl`, `backend.baseUrl` and
+`backend.cors.origin` from it and the frontend uses them verbatim; without the
 port it calls `:443` and every request fails.
+
+Note the Ingress host is set separately, *without* the port — a port in an
+Ingress `host` is rejected by the API server.
 
 **`no cached repo found` on apply** — the Helm provider reads the local repo
 cache. Run `helm repo add jetstack https://charts.jetstack.io && helm repo update`.

@@ -1,0 +1,63 @@
+# Staging: EKS behind ingress-nginx, RDS PostgreSQL, secrets managed
+# out-of-band (ESO / Sealed Secrets / Vault — this chart never creates them).
+
+global:
+  host: "backstage.staging.example.com"
+
+  edx:
+    existingSecret: backstage-staging-secrets
+    logLevel: info
+
+  auth:
+    backend:
+      # Same Secret, under the key `backend-secret`.
+      existingSecret: backstage-staging-secrets
+
+  # External database. The chart still injects POSTGRESQL_ADMIN_PASSWORD from a
+  # Secret even with the in-cluster PostgreSQL disabled, and by default it looks
+  # for one named <release>-postgresql that nothing creates — so it has to be
+  # pointed at the real Secret here or the pod never starts.
+  postgresql:
+    auth:
+      existingSecret: backstage-staging-secrets
+      secretKeys:
+        adminPasswordKey: postgres-password
+
+backstage:
+  upstream:
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-staging
+      tls:
+        enabled: true
+        secretName: backstage-staging-example-com-tls
+
+    postgresql:
+      enabled: false
+
+    backstage:
+      replicas: 2
+
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 6
+        targetCPUUtilizationPercentage: 70
+
+      pdb:
+        create: true
+        minAvailable: 1
+
+      appConfig:
+        backend:
+          database:
+            client: pg
+            connection:
+              # Set to the staging RDS endpoint.
+              host: ""
+              port: 5432
+              user: backstage
+              # Left as the chart's default, ${POSTGRESQL_ADMIN_PASSWORD},
+              # which resolves from global.postgresql.auth above.

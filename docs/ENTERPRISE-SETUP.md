@@ -1,5 +1,30 @@
 # Enterprise Backstage on Kubernetes, with GitHub / Azure / AWS auth
 
+> **This guide predates the migration to Red Hat Developer Hub and has not been
+> rewritten.** It is kept because the *sequence* — database, secrets, base URLs,
+> identity, permissions, ownership — is still the right order to do things in.
+> The mechanics have changed:
+>
+> - **File paths are dead.** Every reference to `packages/`, `Dockerfile`,
+>   `app-config.yaml`, `app-config.production.yaml` and `deploy/helm/backstage`
+>   points at a source tree that no longer exists. Config now lives in
+>   `deploy/helm/rhdh/values.yaml` under
+>   `backstage.upstream.backstage.appConfig`.
+> - **"Add a plugin" is no longer `yarn add` + a line in `index.ts`.** It is an
+>   entry under `global.dynamic.plugins` naming a plugin already inside the RHDH
+>   image. A plugin Red Hat does not wrap cannot be added by configuration at
+>   all — it has to be built and published as a dynamic plugin to an OCI
+>   registry.
+> - **Several steps are already done.** Guest access is gone and GitHub OAuth is
+>   the only way in (steps 7, 9, 10); the frontend sign-in page is now the
+>   `signInPage: github` config key rather than React in `App.tsx`.
+> - **Step 12 changes shape.** There is no allow-all policy module to replace;
+>   RHDH's answer is the RBAC dynamic plugin plus a policy, and the permission
+>   framework currently ships disabled.
+>
+> `deploy/helm/rhdh/README.md` is the accurate reference for anything
+> configuration-shaped.
+
 A step-by-step guide taking this repo from "runs in dev with a guest login" to
 something an organisation can sign in to.
 

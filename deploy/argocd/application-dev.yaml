@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backstage-dev
+  name: rhdh-dev
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -10,17 +10,18 @@ spec:
   source:
     repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
     targetRevision: main
-    path: deploy/helm/backstage
+    path: deploy/helm/rhdh
     helm:
-      releaseName: backstage
+      releaseName: rhdh
       valueFiles:
         - values.yaml
         - values-dev.yaml
-      # image.tag is set in values-dev.yaml by cd-dev.yml on each push to main —
-      # do NOT override it here or the auto-bump will not take effect.
+      # No image.tag bump here any more. The image is Red Hat's, pinned in
+      # values.yaml, and moves only when someone edits that file — there is no
+      # build to promote.
   destination:
     server: https://kubernetes.default.svc
-    namespace: backstage-dev
+    namespace: rhdh-dev
   syncPolicy:
     automated:
       prune: true

@@ -12,95 +12,118 @@ concurrency:
 permissions:
   contents: read
 
+# There is no application to build any more. RHDH ships as a prebuilt image, so
+# what CI can still verify is that the chart renders, the catalog entities parse
+# and every catalog target actually exists.
 jobs:
-  node:
-    name: lint + typecheck + test
-    runs-on: ubuntu-latest
-    # Backstage's own tests run against an in-memory better-sqlite3 database,
-    # so no Postgres service is needed here.
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-
-      # Yarn 4 comes from .yarn/releases via corepack, pinned by packageManager
-      # in package.json.
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Install
-        run: yarn install --immutable
-
-      - name: Typecheck
-        run: yarn tsc
-
-      - name: Lint
-        run: yarn lint:all
-
-      - name: Test
-        run: yarn test:all
-
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage/
-          if-no-files-found: ignore
-
   helm:
     name: helm lint + template
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: azure/setup-helm@v4
         with:
-          version: v3.15.4
+          version: v3.16.4
+
+      # The RHDH chart is a dependency, not vendored. Chart.lock pins it, so
+      # `build` (not `update`) is what enforces the pin.
+      - name: Fetch chart dependencies
+        run: helm dependency build deploy/helm/rhdh
+
       - name: Helm lint
-        run: helm lint deploy/helm/backstage
+        run: helm lint deploy/helm/rhdh -f deploy/helm/rhdh/values.yaml -f deploy/helm/rhdh/values-dev.yaml
+
       - name: Helm template (dev)
         run: |
-          helm template backstage deploy/helm/backstage \
-            -f deploy/helm/backstage/values.yaml \
-            -f deploy/helm/backstage/values-dev.yaml \
+          helm template rhdh deploy/helm/rhdh \
+            -f deploy/helm/rhdh/values.yaml \
+            -f deploy/helm/rhdh/values-dev.yaml \
             > /tmp/rendered-dev.yaml
-      # prod deliberately has no externalPostgres.host committed, and the chart
-      # fails fast when neither that nor the in-cluster Postgres is set — so
-      # supply a throwaway host to render it.
+
+      # staging and prod deliberately ship without a database host committed,
+      # and templates/validate.yaml fails the render when one is missing — so
+      # supply a throwaway endpoint to exercise the rest of the chart.
+      - name: Helm template (staging)
+        run: |
+          helm template rhdh deploy/helm/rhdh \
+            -f deploy/helm/rhdh/values.yaml \
+            -f deploy/helm/rhdh/values-staging.yaml \
+            --set backstage.upstream.backstage.appConfig.backend.database.connection.host=postgres.ci.invalid \
+            > /tmp/rendered-staging.yaml
+
       - name: Helm template (prod)
         run: |
-          helm template backstage deploy/helm/backstage \
-            -f deploy/helm/backstage/values.yaml \
-            -f deploy/helm/backstage/values-prod.yaml \
-            --set image.tag=ci \
-            --set secrets.create=true \
-            --set secrets.postgresPassword=ci-not-a-real-password \
-            --set secrets.backendSecret=ci-secret-that-is-long-enough-1234 \
-            --set externalPostgres.host=postgres.ci.invalid \
+          helm template rhdh deploy/helm/rhdh \
+            -f deploy/helm/rhdh/values.yaml \
+            -f deploy/helm/rhdh/values-prod.yaml \
+            --set backstage.upstream.backstage.appConfig.backend.database.connection.host=postgres.ci.invalid \
             > /tmp/rendered-prod.yaml
+
+      # The chart pins the image in two places and they drift silently: the tag
+      # is what runs, appVersion is what the README and NOTES claim runs.
+      - name: Image tag matches Chart appVersion
+        run: |
+          set -euo pipefail
+          APP=$(yq -r '.appVersion' deploy/helm/rhdh/Chart.yaml)
+          TAG=$(yq -r '.backstage.upstream.backstage.image.tag' deploy/helm/rhdh/values.yaml)
+          IDX=$(yq -r '.global.catalogIndex.image.tag' deploy/helm/rhdh/values.yaml)
+          echo "appVersion=${APP} image.tag=${TAG} catalogIndex.tag=${IDX}"
+          if [ "${APP}" != "${TAG}" ] || [ "${APP}" != "${IDX}" ]; then
+            echo "::error::Chart.yaml appVersion, image.tag and catalogIndex.image.tag must all match"
+            exit 1
+          fi
+
       - name: Upload rendered manifests
         uses: actions/upload-artifact@v4
         with:
           name: helm-rendered
           path: /tmp/rendered-*.yaml
 
-  docker-build:
-    name: docker build (no push)
+  catalog:
+    name: catalog + template entities
     runs-on: ubuntu-latest
-    needs: [node]
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build image (verify Dockerfile)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: backstage:ci
+
+      # Every catalog entity is now fetched over HTTP by the running portal
+      # instead of being baked into an image, so a broken path fails at ingest
+      # time in the cluster rather than at build time here. This job is what
+      # moves that failure back into the PR.
+      #
+      # Scaffolder skeletons are excluded on purpose: they are Helm templates and
+      # nunjucks, not entities, and do not parse as YAML.
+      - name: Entities parse, and declare kind + metadata.name
+        run: |
+          set -euo pipefail
+          status=0
+          for f in catalog/*.yaml catalog/*/*.yaml examples/entities.yaml examples/org.yaml \
+                   examples/template/template.yaml templates/*/template.yaml; do
+            [ -f "$f" ] || continue
+            if ! yq -e 'true' "$f" > /dev/null 2>&1; then
+              echo "::error file=${f}::does not parse as YAML"
+              status=1
+              continue
+            fi
+            missing=$(yq -r 'select(.kind == null or .metadata.name == null) | "x"' "$f")
+            if [ -n "${missing}" ]; then
+              echo "::error file=${f}::a document is missing kind or metadata.name"
+              status=1
+            fi
+          done
+          exit "${status}"
+
+      # Targets in catalog/all.yaml are relative to that file, which is how
+      # app-config gets away with naming a single location.
+      - name: Location targets resolve
+        run: |
+          set -euo pipefail
+          status=0
+          for t in $(yq -r '.spec.targets[]' catalog/all.yaml); do
+            path=$(realpath -m --relative-to=. "catalog/${t}")
+            if [ ! -f "${path}" ]; then
+              echo "::error file=catalog/all.yaml::target ${t} resolves to ${path}, which does not exist"
+              status=1
+            fi
+          done
+          exit "${status}"

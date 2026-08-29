@@ -1,0 +1,39 @@
+apiVersion: v2
+name: rhdh
+description: Red Hat Developer Hub for the EDX platform
+type: application
+
+# Version of THIS wrapper chart, not of RHDH. Bump it when the values contract
+# changes; `appVersion` is the RHDH release the values were written against and
+# must be kept in step with `backstage.upstream.backstage.image.tag`.
+version: 1.0.0
+appVersion: "1.10.3"
+
+# The RHDH chart requires 1.27+.
+kubeVersion: ">=1.27.0-0"
+
+keywords:
+  - rhdh
+  - developer-hub
+  - backstage
+  - catalog
+maintainers:
+  - name: platform
+sources:
+  - https://github.com/luniemma/EDX-BACKTAGE
+
+dependencies:
+  # This IS Red Hat Developer Hub, despite the name. Red Hat publishes the RHDH
+  # chart under the entry `backstage` in their repository — everything under the
+  # `backstage:` key in values.yaml goes to it, and inside that,
+  # `upstream.backstage.*` is the vanilla Backstage chart it wraps.
+  #
+  # 7.0.1 is the last released version of this chart. As of 2026-08-24 Red Hat
+  # deprecated it (7.0.99 carries the marker) in favour of a restructured chart
+  # named `redhat-developer-hub`, whose appVersion is 2.1.0 — a product release
+  # that does not exist yet; there is no 2.x tag on quay.io/rhdh-community/rhdh.
+  # So this stays on 7.0.1 + RHDH 1.10.3, which is a released, matched pair.
+  # See README.md "Upgrading" for the move once RHDH 2.x ships.
+  - name: backstage
+    version: 7.0.1
+    repository: https://redhat-developer.github.io/rhdh-chart

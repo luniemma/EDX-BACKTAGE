@@ -8,10 +8,11 @@
 apiVersion: backstage.io/v1alpha1
 kind: User
 metadata:
+  # Kept only as the owner of the demo entities in examples/entities.yaml.
+  # Nothing signs in as this user any more — guest access is gone and GitHub is
+  # the only provider. Delete it along with the rest of examples/.
   name: guest
 spec:
-  # Guest sign-in resolves to this user, so it has to be a member of the owning
-  # group. Otherwise sign-in succeeds and "my services" is empty for everyone.
   memberOf: [developers]
 ---
 apiVersion: backstage.io/v1alpha1

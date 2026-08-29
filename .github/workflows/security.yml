@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
   schedule:
-    # Weekly full scan (Mondays 06:00 UTC) — catches newly disclosed CVEs
-    # in dependencies that haven't changed but got worse.
+    # Weekly full scan (Mondays 06:00 UTC) — catches newly disclosed CVEs in
+    # things that haven't changed but got worse.
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
 
@@ -14,50 +14,23 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Code scanning is free on public repos, so SARIF uploads and CodeQL both work
-# here. If this repo is ever made private again they will 403 without GitHub
-# Advanced Security — at that point drop the upload steps and the codeql job,
-# not the fail-on-CRITICAL gates, which are what actually block.
+# Code scanning is free on public repos, so SARIF uploads work here. If this
+# repo is ever made private again they will 403 without GitHub Advanced
+# Security — at that point drop the upload steps, not the fail gates, which are
+# what actually block.
 permissions:
   contents: read
-  security-events: write   # required to upload SARIF to the Security tab
+  security-events: write
   actions: read
 
+# CodeQL and `yarn audit` are gone with the application source. What is left to
+# scan is configuration: the rendered manifests, the IaC, and the repo's own
+# history. The RHDH image itself is Red Hat's to patch — scanning it here would
+# produce findings nobody in this repo can fix, so the lever is the pinned tag
+# in deploy/helm/rhdh/values.yaml, not a gate.
 jobs:
-  codeql:
-    name: CodeQL (JS/TS)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:javascript-typescript"
-
-  dependency-audit:
-    name: yarn audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-      - run: corepack enable
-      - run: yarn install --immutable --mode=skip-build
-      # Yarn 4's audit equivalent. Backstage pulls a very large transitive tree,
-      # so production deps are the gate and the full tree is informational.
-      - name: Audit production deps (high+)
-        run: yarn npm audit --environment production --severity high
-      - name: Audit all deps (informational)
-        if: always()
-        run: yarn npm audit --severity moderate || true
-
   trivy-fs:
-    name: Trivy filesystem (deps + code)
+    name: Trivy filesystem (IaC + secrets)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +43,7 @@ jobs:
           output: trivy-fs.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          skip-dirs: node_modules,dist,coverage
+          skip-dirs: rendered,.terraform
           trivyignores: .trivyignore
       - name: Upload SARIF
         if: always()
@@ -86,33 +59,30 @@ jobs:
           severity: CRITICAL
           exit-code: 1
           ignore-unfixed: true
-          skip-dirs: node_modules,dist,coverage
+          skip-dirs: rendered,.terraform
           trivyignores: .trivyignore
 
   trivy-config:
-    name: Trivy config (Dockerfile + Helm)
+    name: Trivy config (rendered manifests + IaC)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: azure/setup-helm@v4
         with:
-          version: v3.15.4
+          version: v3.16.4
 
       - name: Render Helm chart for scanning
         run: |
           mkdir -p rendered
-          helm template backstage deploy/helm/backstage \
-            -f deploy/helm/backstage/values.yaml \
-            -f deploy/helm/backstage/values-prod.yaml \
-            --set image.tag=scan \
-            --set secrets.create=true \
-            --set secrets.postgresPassword=scan-not-a-real-password \
-            --set secrets.backendSecret=scan-secret-that-is-long-enough-1234 \
-            --set externalPostgres.host=postgres.scan.invalid \
+          helm dependency build deploy/helm/rhdh
+          helm template rhdh deploy/helm/rhdh \
+            -f deploy/helm/rhdh/values.yaml \
+            -f deploy/helm/rhdh/values-prod.yaml \
+            --set backstage.upstream.backstage.appConfig.backend.database.connection.host=postgres.scan.invalid \
             > rendered/all.yaml
 
-      - name: Trivy config scan (Dockerfile + rendered manifests)
+      - name: Trivy config scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
@@ -120,7 +90,7 @@ jobs:
           format: sarif
           output: trivy-config.sarif
           severity: CRITICAL,HIGH,MEDIUM
-          skip-dirs: node_modules,dist,coverage
+          skip-dirs: .terraform
           trivyignores: .trivyignore
       - name: Upload SARIF
         if: always()
@@ -135,7 +105,7 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           exit-code: 1
-          skip-dirs: node_modules,dist,coverage
+          skip-dirs: .terraform
           trivyignores: .trivyignore
 
   gitleaks:

@@ -6,7 +6,7 @@ GitHub-hosted machines, via [actions-runner-controller][arc] (ARC).
 [arc]: https://github.com/actions/actions-runner-controller
 
 > **Which cluster.** These run on the **`docker-desktop`** context. ArgoCD and
-> `backstage-dev` live on **`minikube`**. That split is easy to forget and every
+> `rhdh-dev` live on **`minikube`**. That split is easy to forget and every
 > `kubectl` below assumes you are on the right one — check with
 > `kubectl config current-context` before you debug something that turns out to
 > be in the other cluster.

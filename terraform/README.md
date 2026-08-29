@@ -87,29 +87,32 @@ Variables — not Secrets; none are sensitive):
 | Variable | Source |
 | --- | --- |
 | `AWS_REGION` | `us-east-1` |
-| `ECR_REGISTRY` | account portion of `repository_url` |
-| `ECR_REPOSITORY` | `backend-api` |
-| `AWS_ROLE_TO_ASSUME` | `github_push_role_arn` |
 | `TF_PLAN_ROLE_ARN` | `terraform_plan_role_arn` |
 | `TF_APPLY_ROLE_ARN` | `terraform_apply_role_arn` |
 
-Also set `image.repository` in `deploy/helm/backstage/values.yaml` to the
-`repository_url` output, and attach `pull_policy_arn` to your EKS node group role
-(or an IRSA role referenced from
-`serviceAccount.annotations["eks.amazonaws.com/role-arn"]`).
+`ECR_REGISTRY`, `ECR_REPOSITORY` and `AWS_ROLE_TO_ASSUME` are no longer read by
+any workflow — see the note below.
 
 ## Notes
 
+- **The ECR repository and the push role are orphaned.** They existed so CI
+  could publish this repo's own Backstage image. Under Red Hat Developer Hub
+  there is no image to build: the portal runs Red Hat's prebuilt image, pinned in
+  `deploy/helm/rhdh/values.yaml`. Scaffolded services get their own registries
+  from the Crossplane `ServiceRegistry` claim, not from this one. Nothing here
+  was destroyed — confirm no service still pulls from it before you do.
 - **The repository is named `backend-api`, not `backstage`.** This repo used to
   hold an Express notes API. Renaming means destroying and recreating the ECR
   repository, which `force_delete = false` blocks while images exist, so it was
-  left as-is.
+  left as-is. Now that nothing pushes to it, deleting outright is the simpler
+  option.
 - Do **not** attach an `environment:` to the apply job without also adding the
   environment subject to `tf_apply_assume`. Attaching one rewrites the OIDC
   subject claim from `repo:OWNER/REPO:ref:refs/heads/main` to
   `repo:OWNER/REPO:environment:NAME`, and the role will refuse to be assumed.
-- The `IMMUTABLE` tag policy means promotion cannot overwrite `latest`; prod
-  pins an explicit `image.tag`.
+- The `IMMUTABLE` tag policy means a scaffolded service's promotion cannot
+  overwrite `latest`; each environment pins an explicit `image.tag` in the
+  GitOps ledger.
 - The OIDC thumbprint `6938fd4d98bab03faadb97b34396831e3780aea1` is GitHub's.
 - Only one OIDC provider per URL per AWS account — hence
   `create_github_oidc_provider = false` here.

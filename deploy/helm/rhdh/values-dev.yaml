@@ -1,0 +1,53 @@
+# Dev: local minikube/kind behind ingress-nginx, in-cluster PostgreSQL.
+
+global:
+  # The browser uses this verbatim, so scheme, host AND port must match exactly
+  # how the portal is reached. :8443 is the local port-forward to the ingress
+  # controller (deploy/tls-local/README.md); without the port the frontend calls
+  # :443 and every API request fails.
+  #
+  # <name>.127.0.0.1.nip.io is public wildcard DNS resolving to 127.0.0.1, so no
+  # hosts-file entry (and no Administrator) is needed.
+  host: "backstage.127.0.0.1.nip.io:8443"
+
+  edx:
+    existingSecret: rhdh-dev-secrets
+    logLevel: debug
+
+backstage:
+  upstream:
+    ingress:
+      enabled: true
+      className: nginx
+      # No port here — global.host carries :8443 for the browser's benefit, but
+      # an Ingress host with a port in it is rejected by the API server.
+      host: backstage.127.0.0.1.nip.io
+      tls:
+        enabled: true
+        # Issued by cert-manager, see deploy/tls-local.
+        secretName: backstage-tls
+
+    # Single-pod PostgreSQL, no backups, no failover. Dev only. The chart wires
+    # POSTGRES_HOST/PORT/USER and the generated admin password into the pod, so
+    # there is nothing to configure in appConfig.
+    postgresql:
+      enabled: true
+      primary:
+        persistence:
+          size: 2Gi
+
+    backstage:
+      replicas: 1
+      pdb:
+        create: false
+      autoscaling:
+        enabled: false
+      # A laptop cluster will not schedule the production request sizes.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 768Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+          ephemeral-storage: 5Gi

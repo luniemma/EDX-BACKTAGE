@@ -66,17 +66,12 @@ spec:
         repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
         catalogInfoPath: '/catalog-info.yaml'
 
-    # Let's notify the user that the template has completed using the Notification action
-    - id: notify
-      name: Notify
-      action: notification:send
-      input:
-        recipients: entity
-        entityRefs:
-          - user:default/guest
-        title: 'Template executed'
-        info: 'Your template has been executed'
-        severity: 'normal'
+    # A `notification:send` step used to sit here. RHDH 1.10 ships no dynamic
+    # plugin wrapping @backstage/plugin-scaffolder-backend-module-notifications,
+    # so the action does not exist and the step would fail the whole run. The
+    # notifications plugin itself IS enabled — it is only this scaffolder action
+    # that is missing. Restoring it means building and publishing a custom
+    # dynamic plugin; see deploy/helm/rhdh/README.md.
 
   # Outputs are displayed to the user after a successful execution of the template.
   output:
