@@ -18,31 +18,6 @@ service:
   port: 80
   targetPort: 8080
 
-# Off by default: a service reachable from outside the cluster should be a
-# deliberate decision, not something a template hands out. Most scaffolded
-# services are called only by other services, and a ClusterIP is enough.
-#
-# Enabling it needs an ingress controller in the cluster, and `className` must
-# match one it actually watches — an Ingress with an unmatched class is created
-# happily and simply never gets an address.
-ingress:
-  enabled: false
-  className: nginx
-  annotations: {}
-    # cert-manager.io/cluster-issuer: local-ca
-  hosts:
-    - host: ${{ values.name }}.127.0.0.1.nip.io
-      paths:
-        - path: /
-          pathType: Prefix
-  # cert-manager writes the certificate into this Secret. It must live in the
-  # same namespace as the Ingress — a ClusterIssuer is cluster-scoped, but the
-  # Secret it produces is not.
-  tls: []
-    # - secretName: ${{ values.name }}-tls
-    #   hosts:
-    #     - ${{ values.name }}.127.0.0.1.nip.io
-
 resources:
   requests:
     cpu: 50m
@@ -57,41 +32,3 @@ probes:
   path: /healthz
   initialDelaySeconds: 5
   periodSeconds: 10
-
-# Optional in-cluster Postgres. Off by default — most services do not need one,
-# and an unused StatefulSet is a PVC nobody cleans up.
-#
-# This is a SINGLE POD with no backups, no failover and no connection pooling.
-# It is fine for dev and preview environments. For staging and production, ask
-# the platform for a managed instance through a Crossplane claim, the same way
-# deploy/serviceregistry.yaml asks for a container registry.
-postgres:
-  enabled: false
-
-  image:
-    repository: postgres
-    tag: "16-alpine"
-    pullPolicy: IfNotPresent
-
-  auth:
-    username: app
-    database: app
-    # REQUIRED when enabled. The chart refuses to render without it — the
-    # password is never a values file entry. Point this at a Secret produced by
-    # External Secrets Operator, and set secretKey to the key inside it.
-    existingSecret: ""
-    secretKey: POSTGRES_PASSWORD
-
-  persistence:
-    enabled: true
-    size: 2Gi
-    # Leave empty to use the cluster default StorageClass.
-    storageClass: ""
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi

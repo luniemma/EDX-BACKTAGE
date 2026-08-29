@@ -24,12 +24,6 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 3. ArgoCD creates the `rhdh-dev` namespace and rolls out the Deployment. There
    is no migration hook — Backstage runs its own Knex migrations on startup.
 
-The chart at `deploy/helm/rhdh` declares Red Hat's RHDH chart as a dependency,
-so ArgoCD runs `helm dependency build` on each sync and needs egress to
-`redhat-developer.github.io` and `charts.bitnami.com`. Both are on the project's
-`sourceRepos` allow-list; a sync that fails with "repository not permitted" is
-that list, not the network.
-
 ## Wire up scaffolded services
 
 `applicationset-services.yaml` is what makes the golden-path template
@@ -66,18 +60,10 @@ Two things to know before the first service lands:
   ECR tokens expire every 12 hours. Services pulling from ECR need External
   Secrets Operator or an equivalent refresher in their namespace.
 
-Expect the first rollout to take several minutes, and longer than the old
-self-built image did. Before the backend starts at all, an
-`install-dynamic-plugins` init container downloads and unpacks every enabled
-plugin into an ephemeral volume. Watch that, not the main container, when a pod
-looks stuck:
-
-```bash
-kubectl -n rhdh-dev logs -l app.kubernetes.io/instance=rhdh -c install-dynamic-plugins -f
-```
-
-The chart's startup probe allows 120s before liveness and readiness begin; if
-you tighten it, the kubelet will kill the pod mid-startup and it will crashloop.
+Expect the first rollout to take a couple of minutes: Backstage initialises
+every plugin and applies migrations before it reports ready. The chart's
+readiness probe allows for this (`initialDelaySeconds: 30`, 6 failures); if you
+tighten it, the kubelet will kill the pod mid-startup and it will crashloop.
 
 ## Database
 
