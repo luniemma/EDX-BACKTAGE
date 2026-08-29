@@ -45,7 +45,12 @@ jobs:
   # ---------------------------------------------------------------- plan (PR)
   plan:
     name: plan (${{ matrix.root }})
-    if: github.event_name == 'pull_request'
+    # Skips until the platform roles exist. They are created by this very
+    # configuration, so before the bootstrap apply there is nothing to assume
+    # and a plan here could only fail — see "Applying" in
+    # terraform/platform/README.md. Once TF_PLATFORM_PLAN_ROLE_ARN is set, this
+    # starts running on its own.
+    if: github.event_name == 'pull_request' && vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -66,7 +71,7 @@ jobs:
       - name: Configure AWS credentials (OIDC, read-only)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars.TF_PLATFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Format check
@@ -126,6 +131,7 @@ jobs:
     name: apply (platform)
     if: >-
       github.event_name != 'pull_request' &&
+      vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&
       (github.event.inputs.root == null || github.event.inputs.root == 'both' || github.event.inputs.root == 'platform')
     runs-on: ubuntu-latest
     defaults:
@@ -165,6 +171,7 @@ jobs:
       needs.apply-platform.result != 'failure' &&
       needs.apply-platform.result != 'cancelled' &&
       github.event_name != 'pull_request' &&
+      vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&
       (github.event.inputs.root == null || github.event.inputs.root == 'both' || github.event.inputs.root == 'platform-addons')
     runs-on: ubuntu-latest
     defaults:

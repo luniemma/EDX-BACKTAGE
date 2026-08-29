@@ -70,23 +70,31 @@ Through Actions, which is the supported path:
 gh workflow run platform.yml --ref main -f root=both
 ```
 
-Requires the repository variable `TF_PLATFORM_APPLY_ROLE_ARN`, whose value is
-the `platform_apply_role_arn` output of this root. That is a bootstrap
-ordering problem — the role that CI uses is created by the configuration CI
-applies — so the **first** apply has to run locally under credentials that can
-create IAM roles:
+Requires two repository variables, `TF_PLATFORM_PLAN_ROLE_ARN` and
+`TF_PLATFORM_APPLY_ROLE_ARN`. Both roles are created by this root, which is a
+bootstrap ordering problem — the roles CI uses are created by the
+configuration CI applies — so the **first** apply has to run locally under
+credentials that can create IAM roles:
 
 ```
-cd terraform/platform      && terraform init && terraform apply
-cd terraform/platform-addons && terraform init && terraform apply
+cd terraform/platform        && terraform init && terraform apply
+cd ../platform-addons        && terraform init && terraform apply
 ```
 
-then set the variable from the output and use the workflow from then on:
+then publish both ARNs and use the workflow from then on:
 
 ```
+gh variable set TF_PLATFORM_PLAN_ROLE_ARN \
+  --body "$(terraform -chdir=terraform/platform output -raw platform_plan_role_arn)"
 gh variable set TF_PLATFORM_APPLY_ROLE_ARN \
   --body "$(terraform -chdir=terraform/platform output -raw platform_apply_role_arn)"
 ```
+
+Until those variables exist, every job in `platform.yml` skips rather than
+failing — there is no role to assume, so a run could only produce a red X that
+means "not bootstrapped yet". `backend-api-tf-plan` and `backend-api-tf-apply`
+are deliberately not reused: neither can read this root's state, and the plan
+role has no EC2 or EKS read access at all.
 
 ## After the first apply
 

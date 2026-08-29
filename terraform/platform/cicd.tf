@@ -216,6 +216,97 @@ data "aws_iam_policy_document" "platform_apply" {
   }
 }
 
+########## plan role (read-only, PRs) ##########
+# backend-api-tf-plan cannot plan this root either: it has no EC2 or EKS read
+# access and cannot read this root's state key. Same split as the apply role,
+# and same reasoning — a PR from anyone must not gain read access to the ECR
+# pipeline's state, or vice versa.
+
+data "aws_iam_policy_document" "platform_plan_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_owner}/${var.github_repo}:pull_request"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "platform_plan" {
+  # Describe-only. A plan has to refresh every resource it manages, which for
+  # this root means reading the VPC, the cluster, the node group, the KMS key
+  # and the log group.
+  statement {
+    sid    = "ReadInfra"
+    effect = "Allow"
+    actions = [
+      "ec2:Describe*",
+      "ec2:Get*",
+      "eks:Describe*",
+      "eks:List*",
+      "elasticloadbalancing:Describe*",
+      "autoscaling:Describe*",
+      "kms:Describe*",
+      "kms:Get*",
+      "kms:List*",
+      "logs:Describe*",
+      "logs:ListTagsForResource",
+      "iam:Get*",
+      "iam:List*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ReadState"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+    ]
+    resources = local.platform_state_arns
+  }
+
+  statement {
+    sid       = "ListStateBucket"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:${local.partition}:s3:::${var.tfstate_bucket}"]
+  }
+}
+
+resource "aws_iam_role" "platform_plan" {
+  name               = "${var.name}-tf-plan"
+  assume_role_policy = data.aws_iam_policy_document.platform_plan_assume.json
+  description        = "Read-only Terraform plan role for the platform roots, pull requests only"
+}
+
+resource "aws_iam_role_policy" "platform_plan" {
+  name   = "${var.name}-tf-plan"
+  role   = aws_iam_role.platform_plan.id
+  policy = data.aws_iam_policy_document.platform_plan.json
+}
+
+output "platform_plan_role_arn" {
+  description = "Set this as the TF_PLATFORM_PLAN_ROLE_ARN repository variable."
+  value       = aws_iam_role.platform_plan.arn
+}
+
+########## apply role ##########
+
 resource "aws_iam_role" "platform_apply" {
   name               = "${var.name}-tf-apply"
   assume_role_policy = data.aws_iam_policy_document.platform_apply_assume.json
