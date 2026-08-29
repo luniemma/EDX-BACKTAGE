@@ -26,6 +26,14 @@ jobs:
         with:
           version: v3.16.4
 
+      # `dependency build` resolves the repository URL against the runner's own
+      # repo list, which starts empty -- without this it fails with
+      # "no repository definition for https://redhat-developer.github.io/rhdh-chart".
+      - name: Add RHDH chart repository
+        run: |
+          helm repo add rhdh https://redhat-developer.github.io/rhdh-chart
+          helm repo update
+
       # The RHDH chart is a dependency, not vendored. Chart.lock pins it, so
       # `build` (not `update`) is what enforces the pin.
       - name: Fetch chart dependencies
@@ -105,8 +113,12 @@ jobs:
               status=1
               continue
             fi
-            missing=$(yq -r 'select(.kind == null or .metadata.name == null) | "x"' "$f")
-            if [ -n "${missing}" ]; then
+            # A string literal in yq is a constant, so `select(...) | "x"` emits
+            # "x" even when select matches nothing -- the old form failed every
+            # file unconditionally. Count the matched documents instead, with
+            # `ea` so multi-document files are evaluated as one stream.
+            missing=$(yq ea -r '[select(.kind == null or .metadata.name == null)] | length' "$f")
+            if [ "${missing}" != "0" ]; then
               echo "::error file=${f}::a document is missing kind or metadata.name"
               status=1
             fi

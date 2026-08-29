@@ -148,6 +148,17 @@ backstage:
         tag: "1.10.3"
         pullPolicy: IfNotPresent
 
+      # The chart already hardens both containers (non-root, drop ALL,
+      # read-only rootfs, RuntimeDefault seccomp) but leaves the *pod* context
+      # unset, which Trivy flags as KSV-0118 "default security context". Mirror
+      # the container settings at pod level. Deliberately no runAsUser/fsGroup:
+      # the RHDH image picks its own UID, and OpenShift assigns one per
+      # namespace -- pinning either breaks both.
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
       replicas: 2
 
       # Heavier than the old hand-rolled image: the init container downloads and
