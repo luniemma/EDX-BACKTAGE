@@ -1,7 +1,3 @@
-node_modules/
-dist
-dist-types
-coverage/
 .env
 .env.local
 .env.*.local
@@ -10,18 +6,15 @@ coverage/
 .vscode/
 .idea/
 
-# Backstage
 # Local config overrides — may contain tokens, never commit.
 *.local.yaml
-# Yarn 4 keeps its own release binary in-repo; that MUST be committed so CI and
-# the Docker build resolve the same Yarn. Everything else under .yarn is not.
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-.yarn/install-state.gz
+
+# Helm
+# Chart.lock is committed and pins the RHDH chart; the fetched archive under
+# charts/ is not, and is restored with `helm dependency build`.
+deploy/helm/*/charts/
+rendered/
+*.rendered.yaml
 
 # Terraform — state can hold sensitive values and is kept in S3, not here.
 # terraform.tfvars IS committed on purpose: it holds no secrets, and the CI

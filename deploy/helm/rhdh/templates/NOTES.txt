@@ -1,0 +1,13 @@
+Red Hat Developer Hub {{ .Chart.AppVersion }} — release {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+  Portal:  https://{{ .Values.global.host }}
+  Image:   {{ .Values.backstage.upstream.backstage.image.registry }}/{{ .Values.backstage.upstream.backstage.image.repository }}:{{ .Values.backstage.upstream.backstage.image.tag }}
+
+First boot is slow: the install-dynamic-plugins init container downloads and
+unpacks every enabled plugin before the backend starts. Watch it with
+
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/instance={{ .Release.Name }} -c install-dynamic-plugins -f
+
+If sign-in fails with "unable to resolve user identity", the GitHub login has no
+matching User entity in the catalog. Add it to examples/org.yaml, or enable
+GithubOrgEntityProvider — see deploy/helm/rhdh/README.md.

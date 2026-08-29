@@ -1,0 +1,25 @@
+{{/*
+Render-time guards. These emit no manifests; they exist so a misconfiguration
+fails at `helm template` in CI rather than as a CrashLoopBackOff an hour later.
+The old chart had the same fail-fast on the database, and the RHDH chart has
+none of its own — with the in-cluster PostgreSQL disabled and no host supplied
+it renders happily and the backend dies on connect.
+*/}}
+
+{{- $upstream := dig "upstream" dict .Values.backstage -}}
+{{- $pgEnabled := dig "postgresql" "enabled" false $upstream -}}
+{{- $connection := dig "backstage" "appConfig" "backend" "database" "connection" dict $upstream -}}
+
+{{- if not $pgEnabled }}
+  {{- if not (get $connection "host") }}
+    {{- fail "backstage.upstream.postgresql.enabled is false but no database host is set. Set backstage.upstream.backstage.appConfig.backend.database.connection.host to the RDS endpoint, or --set it at install time." }}
+  {{- end }}
+{{- end }}
+
+{{- if not (dig "host" "" .Values.global) }}
+  {{- fail "global.host is not set. RHDH derives app.baseUrl, backend.baseUrl and backend.cors.origin from it; leaving it empty produces a portal whose frontend calls the wrong origin." }}
+{{- end }}
+
+{{- if not (dig "edx" "existingSecret" "" .Values.global) }}
+  {{- fail "global.edx.existingSecret is not set. It names the Secret holding AUTH_GITHUB_CLIENT_ID and AUTH_GITHUB_CLIENT_SECRET, without which GitHub sign-in — the only sign-in — cannot start." }}
+{{- end }}

@@ -1,0 +1,39 @@
+# Root catalog location.
+#
+# Under RHDH nothing in this repository ships inside the container image, so the
+# `type: file` locations the old app-config used no longer resolve. Everything
+# is read over HTTP through the GitHub integration instead.
+#
+# Targets are relative to THIS file's URL, which is why app-config only has to
+# name one location: repointing an environment at a different branch is a
+# one-line change in deploy/helm/rhdh/values-<env>.yaml.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: edx-catalog-root
+  description: Every entity, template and org descriptor this repository owns.
+spec:
+  type: url
+  targets:
+    # The portal itself, so it appears in its own catalog. This was never
+    # ingested under the old file-location config — it had to be registered by
+    # hand — which is why the Component existed but the catalog was empty of it.
+    - ../catalog-info.yaml
+
+    # The Xeta AI Platform (github.com/luniemma/xeta-ai-platform) — a separate
+    # repository, described here rather than vendored.
+    - ./xeta-ai-platform/system.yaml
+    - ./xeta-ai-platform/components.yaml
+    - ./xeta-ai-platform/resources.yaml
+
+    # The golden path: scaffolds a service plus its ArgoCD Application and
+    # Crossplane registry claim.
+    - ../templates/golden-path-service/template.yaml
+
+    # Placeholder org data. Retire this once GithubOrgEntityProvider is on —
+    # see deploy/helm/rhdh/values.yaml.
+    - ../examples/org.yaml
+
+    # Demo data. Safe to delete; nothing else references it.
+    - ../examples/entities.yaml
+    - ../examples/template/template.yaml

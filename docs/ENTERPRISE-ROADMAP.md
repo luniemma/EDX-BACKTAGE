@@ -1,5 +1,16 @@
 # Enterprise readiness roadmap
 
+> **Written before the migration to Red Hat Developer Hub.** The "where the
+> project actually is" table below describes a self-built Backstage image with
+> guest auth; neither is true any more. The portal now runs Red Hat's prebuilt
+> image, has no build pipeline, and admits nobody without GitHub OAuth — so
+> theme A1 is largely done and the supply-chain row no longer applies (CodeQL
+> and `yarn audit` went with the source). The *unstarted* themes — observability,
+> SLOs, permission policy, ownership — are unaffected and still accurate.
+>
+> Anything referencing `packages/`, `Dockerfile` or `app-config*.yaml` points at
+> files the migration removed.
+
 Status: **proposal — nothing here is implemented.**
 Scope agreed: **Identity + RBAC** and **Observability + SLOs**.
 Budget ceiling: **~$50–100/month** of AWS spend.

@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backstage-prod
+  name: rhdh-prod
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -9,19 +9,22 @@ spec:
   project: backstage
   source:
     repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
-    # Track a release branch or specific tag in prod, NOT main.
+    # Track a release branch or specific tag in prod, NOT main. values-prod.yaml
+    # also points the catalog root Location at this branch, so entity edits on
+    # main do not reach production until the branch moves.
     targetRevision: release/prod
-    path: deploy/helm/backstage
+    path: deploy/helm/rhdh
     helm:
-      releaseName: backstage
+      releaseName: rhdh
       valueFiles:
         - values.yaml
         - values-prod.yaml
-      # Image tag is expected to be set by CI (e.g. by argocd-image-updater
-      # or a bot commit) — do not hard-code it here.
+      # The sync fails to render until the RDS endpoint is filled in — see
+      # templates/validate.yaml. Set it in values-prod.yaml under
+      # backstage.upstream.backstage.appConfig.backend.database.connection.host.
   destination:
     server: https://kubernetes.default.svc
-    namespace: backstage-prod
+    namespace: rhdh-prod
   syncPolicy:
     automated:
       prune: true

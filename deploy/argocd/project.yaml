@@ -4,11 +4,16 @@ metadata:
   name: backstage
   namespace: argocd
 spec:
-  description: Backstage developer portal
+  description: Red Hat Developer Hub portal
   sourceRepos:
     - https://github.com/luniemma/EDX-BACKTAGE.git
+    # The RHDH chart is a Helm dependency, so ArgoCD fetches it from Red Hat's
+    # repository during `helm dependency build` and must be allowed to.
+    - https://redhat-developer.github.io/rhdh-chart
+    # Pulled transitively: the RHDH chart depends on bitnami/common.
+    - https://charts.bitnami.com/bitnami
   destinations:
-    - namespace: backstage-*
+    - namespace: rhdh-*
       server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ""

@@ -10,7 +10,7 @@ metadata:
 spec:
   type: service
   lifecycle: production
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform
   providesApis:
     - xeta-llm-api
@@ -25,7 +25,7 @@ metadata:
 spec:
   type: service
   lifecycle: production
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform
   dependsOn:
     - resource:default/xeta-cache
@@ -40,7 +40,7 @@ metadata:
 spec:
   type: openapi
   lifecycle: production
-  owner: group:default/guests
+  owner: group:default/developers
   system: xeta-ai-platform
   definition: |
     openapi: 3.0.0

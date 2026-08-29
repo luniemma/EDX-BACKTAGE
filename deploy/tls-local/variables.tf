@@ -27,9 +27,9 @@ variable "backstage_host" {
 }
 
 variable "backstage_namespace" {
-  description = "Namespace the Backstage TLS secret is created in (must match the app)."
+  description = "Namespace the RHDH TLS secret is created in (must match the app)."
   type        = string
-  default     = "backstage-dev"
+  default     = "rhdh-dev"
 }
 
 variable "argocd_host" {

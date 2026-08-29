@@ -1,17 +1,39 @@
 ---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-user
+#
+# Placeholder org data. Once a real identity provider is wired up these entities
+# come from the GitHub org or Entra ID on a schedule and this file goes away —
+# hand edits would be overwritten at the next sync. See docs/ENTERPRISE-SETUP.md
+# Step 6.
 apiVersion: backstage.io/v1alpha1
 kind: User
 metadata:
+  # Kept only as the owner of the demo entities in examples/entities.yaml.
+  # Nothing signs in as this user any more — guest access is gone and GitHub is
+  # the only provider. Delete it along with the rest of examples/.
   name: guest
 spec:
-  memberOf: [guests]
+  memberOf: [developers]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  # Must match the GitHub login exactly — the github provider's sign-in resolver
+  # is usernameMatchingUserEntityName, so it looks for a User entity of this
+  # name and fails sign-in with "unable to resolve user identity" if absent.
+  # Placeholder until GithubOrgEntityProvider ingests the real org (Step 6).
+  name: luniemma
+spec:
+  profile:
+    displayName: luniemma
+  memberOf: [developers]
 ---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-group
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
-  name: guests
+  name: developers
+  description: Everyone building on the platform. Default owner for catalog entities.
 spec:
   type: team
   children: []

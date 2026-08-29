@@ -1,0 +1,321 @@
+# Red Hat Developer Hub — shared defaults.
+# Override per environment with values-<env>.yaml.
+#
+# Layout note. Everything under `backstage:` is handed to the RHDH chart, which
+# Red Hat publishes under the entry name `backstage` (see Chart.yaml). Inside
+# it, `upstream.backstage.*` is the vanilla Backstage chart that RHDH wraps. So
+# a pod-level setting lives at `backstage.upstream.backstage.<thing>` — three
+# levels that all read "backstage" and mean different things. Sorry.
+#
+# Anything under `global:` is a Helm global and reaches the RHDH chart, the
+# Backstage subchart and the PostgreSQL subchart alike.
+
+global:
+  # Hostname the browser uses. RHDH derives app.baseUrl, backend.baseUrl and
+  # backend.cors.origin from it, so it MUST be set per environment or the
+  # frontend will call the wrong origin and every API request fails.
+  host: ""
+
+  auth:
+    backend:
+      # Service-to-service auth. Left to generate a random `backend-secret` in
+      # dev; staging and prod point it at a Secret they do not create.
+      enabled: true
+
+  # Plugin index the Extensions UI browses. The chart defaults this to `next`,
+  # a tag that moves with RHDH's main branch — pinned here so a rollout cannot
+  # pick up an index built against a newer product version than the image.
+  catalogIndex:
+    image:
+      registry: quay.io
+      repository: rhdh/plugin-catalog-index
+      tag: "1.10.3"
+
+  # Not a chart key — ours. Referenced from `extraEnvVars` below, which the
+  # chart renders through `tpl`, so a single per-environment override here
+  # repoints every secret lookup instead of restating the whole env list.
+  edx:
+    # Secret supplying AUTH_GITHUB_CLIENT_ID, AUTH_GITHUB_CLIENT_SECRET and
+    # (optionally) GITHUB_TOKEN. Never created by this chart — see README.
+    existingSecret: rhdh-secrets
+    # Backstage's root logger reads this from the environment, not from config.
+    logLevel: info
+
+  # ── Dynamic plugins ────────────────────────────────────────────────────────
+  # This section replaces packages/backend/src/index.ts. Every line that used to
+  # be a `backend.add(import('@backstage/plugin-...'))` is either core to the
+  # RHDH image (catalog, scaffolder, auth, search, permission, proxy,
+  # user-settings, app) or an entry below.
+  #
+  # `includes` pulls in dynamic-plugins.default.yaml, which ships inside the
+  # image and lists every wrapped plugin with a default enabled/disabled state.
+  # Entries in `plugins` override it by package path.
+  dynamic:
+    includes:
+      - dynamic-plugins.default.yaml
+    plugins:
+      # publish:github and the rest of the GitHub scaffolder actions. Both
+      # templates/golden-path-service and examples/template use publish:github,
+      # so without this every scaffolder run fails at the publish step.
+      - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
+        disabled: false
+
+      # TechDocs. The RHDH image ships mkdocs in /opt/techdocs-venv and puts it
+      # on PATH, which is what makes techdocs.generator.runIn 'local' work —
+      # this is the whole reason the old Dockerfile's Python virtualenv stage
+      # can be deleted rather than ported.
+      - package: ./dynamic-plugins/dist/backstage-plugin-techdocs
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
+        disabled: false
+
+      # Notifications and signals (the sidebar bell + its websocket transport).
+      - package: ./dynamic-plugins/dist/backstage-plugin-notifications
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-signals
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic
+        disabled: false
+
+      # Kubernetes tab on catalog entities. Paired with the `kubernetes:` block
+      # in appConfig below — the backend needs a clusterLocatorMethod or the tab
+      # renders an error instead of an empty state.
+      - package: ./dynamic-plugins/dist/backstage-plugin-kubernetes
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic
+        disabled: false
+
+      # GitHub catalog ingestion. Deliberately OFF: both providers need a real
+      # GitHub *organisation*, and luniemma is a personal account, so turning
+      # them on today produces a provider that errors on every scheduled run.
+      # To enable, create an org, add the matching `catalog.providers` block to
+      # appConfig below, then flip `disabled`.
+      #
+      #   GithubEntityProvider — discovers catalog-info.yaml across the org:
+      - package: ./dynamic-plugins/dist/backstage-plugin-catalog-backend-module-github-dynamic
+        disabled: true
+      #   GithubOrgEntityProvider — ingests real User and Group entities. This
+      #   is the one that retires examples/org.yaml: the github sign-in resolver
+      #   is usernameMatchingUserEntityName, so a User entity has to exist for
+      #   every person who signs in.
+      - package: ./dynamic-plugins/dist/backstage-plugin-catalog-backend-module-github-org-dynamic
+        disabled: true
+
+      # Telemetry to Red Hat, on by default in the RHDH image. Off here — this
+      # is a private portal and the data leaves the cluster.
+      # https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index
+      - package: ./dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment
+        disabled: true
+
+backstage:
+  # OpenShift Route. This runs on EKS/minikube behind ingress-nginx, and the
+  # RHDH chart defaults this to true, so it has to be turned off explicitly or
+  # Helm renders a Route CRD the cluster has never heard of.
+  route:
+    enabled: false
+
+  # `helm test` connection pod. Off because ArgoCD renders the whole chart and
+  # a hook-annotated Pod on a `latest` image is noise in a GitOps diff.
+  test:
+    enabled: false
+
+  upstream:
+    ingress:
+      enabled: false
+      className: nginx
+      annotations: {}
+      # `host` is taken from global.host by the RHDH chart; leave it alone.
+      path: /
+      tls:
+        enabled: false
+        secretName: ""
+
+    postgresql:
+      # Off by default. Dev turns on the in-cluster instance; staging and prod
+      # point at RDS through the POSTGRES_* env vars below.
+      enabled: false
+
+    backstage:
+      image:
+        registry: quay.io
+        # Community build. No Red Hat subscription or pull secret required —
+        # registry.redhat.io/rhdh/rhdh-hub-rhel9 is the supported equivalent and
+        # needs both.
+        repository: rhdh-community/rhdh
+        # Keep in step with Chart.yaml appVersion.
+        tag: "1.10.3"
+        pullPolicy: IfNotPresent
+
+      replicas: 2
+
+      # Heavier than the old hand-rolled image: the init container downloads and
+      # unpacks every dynamic plugin before the backend starts, and that is what
+      # the ephemeral-storage limit is for.
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2.5Gi
+          ephemeral-storage: 5Gi
+
+      pdb:
+        create: false
+        minAvailable: 1
+
+      autoscaling:
+        enabled: false
+        minReplicas: 2
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+
+      # Credentials. Kept as explicit secretKeyRef entries rather than an
+      # envFrom over the whole Secret: envFrom would also try to export the
+      # `backend-secret` key, whose name is not a valid environment variable,
+      # and the kubelet reports that as an InvalidVariableNames event that looks
+      # like a real failure. The chart renders this list through `tpl`, hence
+      # the template expressions.
+      #
+      # This list REPLACES the chart's default rather than appending to it, so
+      # the first two entries are the chart's own and have to stay. Dropping
+      # BACKEND_SECRET breaks service-to-service auth; dropping
+      # POSTGRESQL_ADMIN_PASSWORD breaks the database connection.
+      extraEnvVars:
+        - name: LOG_LEVEL
+          value: '{{ .Values.global.edx.logLevel }}'
+        - name: BACKEND_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: '{{ include "rhdh.backend-secret-name" $ }}'
+              key: backend-secret
+        - name: POSTGRESQL_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: '{{ include "rhdh.postgresql.secretName" . }}'
+              key: '{{ include "rhdh.postgresql.adminPasswordKey" . }}'
+        - name: AUTH_GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: '{{ .Values.global.edx.existingSecret }}'
+              key: AUTH_GITHUB_CLIENT_ID
+        - name: AUTH_GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: '{{ .Values.global.edx.existingSecret }}'
+              key: AUTH_GITHUB_CLIENT_SECRET
+        # Optional: without it the GitHub integration falls back to anonymous
+        # reads, which is enough for a public repo but rate-limited.
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: '{{ .Values.global.edx.existingSecret }}'
+              key: GITHUB_TOKEN
+              optional: true
+
+      # ── app-config ──────────────────────────────────────────────────────────
+      # Rendered into a ConfigMap by the chart and passed as the last --config,
+      # so it wins over the three app-config files baked into the image. It is
+      # also the only config the chart checksums into a pod annotation, which is
+      # what makes a config edit actually roll the pods — an extraAppConfig
+      # ConfigMap would change under a running Deployment and do nothing.
+      #
+      # The RHDH chart contributes app.baseUrl, backend.baseUrl,
+      # backend.cors.origin (all derived from global.host) and
+      # backend.auth.externalAccess; those merge with what follows.
+      appConfig:
+        app:
+          # Placeholder branding — change to whatever this portal is called.
+          title: EDX Developer Hub
+        organization:
+          name: EDX Platform
+
+        # Tells the frontend which sign-in button to render. RHDH-specific key;
+        # without it the login page offers nothing and sign-in is impossible.
+        signInPage: github
+
+        auth:
+          environment: production
+          providers:
+            # Guest is deliberately absent, and this time absence is sufficient:
+            # RHDH only registers a provider that appears here, so there is no
+            # equivalent of the old "module not registered but config present"
+            # trap that made guest look disabled while it wasn't.
+            github:
+              production:
+                clientId: ${AUTH_GITHUB_CLIENT_ID}
+                clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+                signIn:
+                  resolvers:
+                    # Maps the GitHub login to a User entity of the same name.
+                    # Sign-in fails with "unable to resolve user identity" if no
+                    # such User is in the catalog — examples/org.yaml carries
+                    # the placeholders until GithubOrgEntityProvider is on.
+                    - resolver: usernameMatchingUserEntityName
+
+        integrations:
+          github:
+            - host: github.com
+              token: ${GITHUB_TOKEN}
+
+        catalog:
+          import:
+            entityFilename: catalog-info.yaml
+            pullRequestBranchName: backstage-integration
+          # One flat allow-list instead of the old per-location rules. The
+          # entities now arrive through a single nested Location (catalog/all.yaml)
+          # and per-location rules do not reliably propagate to nested targets.
+          rules:
+            - allow:
+                - Component
+                - System
+                - API
+                - Resource
+                - Location
+                - Template
+                - User
+                - Group
+                - Domain
+          locations:
+            # File locations are gone. Nothing in this repo is inside the RHDH
+            # image any more, so every entity is read over HTTP through the
+            # GitHub integration. catalog/all.yaml is a Location entity whose
+            # targets are relative to itself, which keeps this to one URL to
+            # repoint per environment.
+            - type: url
+              target: https://github.com/luniemma/EDX-BACKTAGE/blob/main/catalog/all.yaml
+
+        techdocs:
+          builder: local
+          generator:
+            # 'local' shells out to the mkdocs binary in the image. 'docker'
+            # would try to start a container, and there is no daemon in this
+            # pod — docs then fail at request time rather than at deploy time.
+            runIn: local
+          publisher:
+            type: local
+            local:
+              # readOnlyRootFilesystem is on, so this has to be the emptyDir the
+              # chart mounts at /tmp. Anywhere else fails with EROFS.
+              publishDirectory: /tmp/techdocs
+
+        kubernetes:
+          serviceLocatorMethod:
+            type: multiTenant
+          clusterLocatorMethods:
+            # Empty on purpose: the plugin needs a locator to start cleanly, and
+            # an empty cluster list gives a working (if empty) Kubernetes tab.
+            # Add clusters here — see README "Kubernetes plugin".
+            - type: config
+              clusters: []
+
+        permission:
+          # Was `true` with the allow-all policy module, which is the same thing
+          # as off. RHDH has no allow-all module to register; the way to make
+          # permissions mean something here is the RBAC plugin
+          # (./dynamic-plugins/dist/backstage-community-plugin-rbac) plus an
+          # rbac policy, and enabling the framework without a policy backend
+          # risks denying everyone.
+          enabled: false

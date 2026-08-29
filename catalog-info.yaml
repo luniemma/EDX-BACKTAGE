@@ -2,12 +2,16 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: backstage
-  description: An example of a Backstage application.
-  # Example for optional annotations
-  # annotations:
-  #   github.com/project-slug: backstage/backstage
-  #   backstage.io/techdocs-ref: dir:.
+  description: The developer portal itself, and the platform that delivers it.
+  annotations:
+    github.com/project-slug: luniemma/EDX-BACKTAGE
+    # `url:` rather than `dir:.`. A dir reference resolves relative to the
+    # entity's own location, and under RHDH that location is a GitHub URL rather
+    # than a path inside an image this repo builds — nothing here ships in the
+    # container any more. The url form fetches the repo from GitHub, which works
+    # the same in the pod as it does locally.
+    backstage.io/techdocs-ref: url:https://github.com/luniemma/EDX-BACKTAGE
 spec:
   type: website
-  owner: john@example.com
+  owner: group:default/developers
   lifecycle: experimental

@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backstage-staging
+  name: rhdh-staging
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -10,17 +10,18 @@ spec:
   source:
     repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
     targetRevision: main
-    path: deploy/helm/backstage
+    path: deploy/helm/rhdh
     helm:
-      releaseName: backstage
+      releaseName: rhdh
       valueFiles:
         - values.yaml
         - values-staging.yaml
-      # image.tag is set in values-staging.yaml by the promote workflow —
-      # do NOT override it here or the promotion will not take effect.
+      # The sync fails to render until the RDS endpoint is filled in — see
+      # templates/validate.yaml. Set it in values-staging.yaml under
+      # backstage.upstream.backstage.appConfig.backend.database.connection.host.
   destination:
     server: https://kubernetes.default.svc
-    namespace: backstage-staging
+    namespace: rhdh-staging
   syncPolicy:
     automated:
       prune: true

@@ -1,0 +1,17 @@
+site_name: EDX-BACKTAGE
+site_description: Red Hat Developer Hub and the platform that delivers it
+
+docs_dir: docs
+
+plugins:
+  # Provided by mkdocs-techdocs-core, which the RHDH image ships in
+  # /opt/techdocs-venv and puts on PATH — this repo no longer installs it.
+  # Without this plugin the build succeeds but the output does not render
+  # correctly in the TechDocs viewer.
+  - techdocs-core
+
+nav:
+  - Home: index.md
+  - Enterprise setup: ENTERPRISE-SETUP.md
+  - Enterprise roadmap: ENTERPRISE-ROADMAP.md
+  - Xeta deployment: XETA-DEPLOYMENT.md
