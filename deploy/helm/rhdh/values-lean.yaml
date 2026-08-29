@@ -1,0 +1,81 @@
+# Lean EKS: real cluster, no RDS, no NAT gateway.
+#
+# The trade against values-prod.yaml is deliberate and worth stating plainly:
+# PostgreSQL runs as a single in-cluster pod on a Spot node. If that node is
+# reclaimed the database restarts, and the EBS volume follows it only within
+# the same AZ. There are no backups. This is a demo/evaluation profile — use
+# values-prod.yaml and a real RDS instance for anything that matters.
+
+global:
+  # MUST match how the browser actually reaches the portal, scheme and host
+  # exactly, or the frontend calls the wrong origin and every API request
+  # fails CORS.
+  #
+  # Left empty on purpose: the hostname is the NLB that ingress-nginx creates,
+  # which does not exist until terraform/platform-addons is applied. Fill it in
+  # and commit — ArgoCD syncs the change. templates/validate.yaml fails the
+  # render while this is empty, which is the intended behaviour: better a
+  # failed sync than a portal that half-works.
+  #
+  #   kubectl -n ingress-nginx get svc ingress-nginx-controller \
+  #     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  #
+  # e.g. host: "k8s-ingressn-abc123.elb.us-east-1.amazonaws.com"
+  host: ""
+
+  edx:
+    logLevel: info
+
+backstage:
+  upstream:
+    ingress:
+      enabled: true
+      className: nginx
+      # Same value as global.host. No port suffix here — an Ingress host with
+      # a port is rejected by the API server.
+      host: ""
+      tls:
+        # No certificate yet. The NLB hostname is not a name you can issue a
+        # public certificate for; put a real domain in front and switch this
+        # on with cert-manager before exposing anything real.
+        enabled: false
+
+    # In-cluster PostgreSQL instead of RDS (-$13/month). The chart wires
+    # POSTGRES_HOST/PORT/USER and the generated admin password into the pod,
+    # so appConfig needs no database stanza.
+    postgresql:
+      enabled: true
+      primary:
+        persistence:
+          size: 8Gi
+          # Named explicitly rather than relying on a cluster default — see
+          # terraform/platform-addons/storage.tf.
+          storageClass: gp3
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+
+    backstage:
+      # Two t3.medium Spot nodes total, shared with ingress-nginx, ArgoCD and
+      # the EBS CSI controller. One RHDH replica is what actually fits.
+      replicas: 1
+
+      pdb:
+        create: false
+
+      autoscaling:
+        enabled: false
+
+      resources:
+        requests:
+          cpu: 200m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+          # The init container unpacks every dynamic plugin here before the
+          # backend starts; this is why nodes get a 40Gi root volume.
+          ephemeral-storage: 5Gi

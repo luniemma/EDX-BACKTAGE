@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rhdh-lean
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: backstage
+  source:
+    repoURL: https://github.com/luniemma/EDX-BACKTAGE.git
+    # Tracks main directly. Unlike prod, this profile has no release branch in
+    # front of it: it is an evaluation cluster, and the point is that a merge
+    # to main shows up here without ceremony.
+    targetRevision: main
+    path: deploy/helm/rhdh
+    helm:
+      releaseName: rhdh
+      valueFiles:
+        - values.yaml
+        - values-lean.yaml
+      # The sync fails to render until global.host and the ingress host are
+      # filled in with the NLB hostname — see values-lean.yaml. That failure is
+      # deliberate; templates/validate.yaml would rather stop than hand you a
+      # portal whose frontend calls the wrong origin.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rhdh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 5

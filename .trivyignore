@@ -23,3 +23,42 @@
 # ConfigMap to move. Trivy matches on key name and cannot see the indirection.
 # Re-check if app-config ever gains a key holding a literal.
 AVD-KSV-0109
+
+########################################
+# Lean EKS profile — terraform/platform
+########################################
+# The four entries below are consequences of the cost profile this cluster was
+# deliberately built to, NOT oversights. They are grouped so the trade is
+# reviewed as one decision. Every one of them goes away by moving to private
+# subnets + a NAT gateway (~$33/month) and a restricted API endpoint — see
+# "Hardening" in terraform/platform/README.md.
+
+# AVD-AWS-0040 / AVD-AWS-0041 -- public EKS endpoint, open to 0.0.0.0/0.
+#
+# This profile has no NAT gateway, no bastion and no VPN, so there is no
+# private path to the API server: a private-only endpoint locks out every
+# operator and Terraform itself. It is also load-bearing for CI, because the
+# verify job in .github/workflows/platform.yml runs on GitHub-hosted runners
+# whose egress addresses are dynamic and cannot be allowlisted.
+#
+# What keeps this defensible: authentication is IAM via EKS access entries, so
+# the endpoint is not an unauthenticated surface. Narrow
+# var.public_access_cidrs the moment a stable egress range exists — it is the
+# highest-value hardening step available in this profile.
+AVD-AWS-0040
+AVD-AWS-0041
+
+# AVD-AWS-0164 -- subnets assign public IPs.
+#
+# Same root cause. With no NAT, nodes need a routable address to pull images
+# and reach the control plane. Their security group allows no inbound from the
+# internet, so what is exposed is the kubelet's surface, not the workloads'.
+AVD-AWS-0164
+
+# AVD-AWS-0104 -- unrestricted egress on the node security group.
+#
+# Nodes must reach quay.io for the RHDH image, the RHDH chart repository, and
+# the regional EKS and EC2 endpoints. Filtering egress that tightly requires a
+# VPC endpoint per service, which together cost more per month than this entire
+# cluster. Revisit alongside the NAT decision, not before.
+AVD-AWS-0104

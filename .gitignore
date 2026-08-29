@@ -24,6 +24,10 @@ rendered/
 *.tfstate
 *.tfstate.*
 *.tfplan
+# A bare `tfplan` from `terraform plan -out=tfplan`. Not covered by *.tfplan,
+# and Trivy parses plan files as config — committing one drags the whole
+# module snapshot into the security scan as findings nobody here can fix.
+tfplan
 
 # Separate repo (luniemma/xeta-ai-platform) checked out here; not vendored.
 RTXsample/
