@@ -49,6 +49,19 @@ jobs:
             -f deploy/helm/rhdh/values-dev.yaml \
             > /tmp/rendered-dev.yaml
 
+      # lean ships without a host committed for the same reason staging and
+      # prod ship without a database host: the NLB that ingress-nginx creates
+      # does not exist until terraform/platform-addons is applied. Supply a
+      # throwaway one to exercise the rest of the chart.
+      - name: Helm template (lean)
+        run: |
+          helm template rhdh deploy/helm/rhdh \
+            -f deploy/helm/rhdh/values.yaml \
+            -f deploy/helm/rhdh/values-lean.yaml \
+            --set global.host=lean.ci.invalid \
+            --set backstage.upstream.ingress.host=lean.ci.invalid \
+            > /tmp/rendered-lean.yaml
+
       # staging and prod deliberately ship without a database host committed,
       # and templates/validate.yaml fails the render when one is missing — so
       # supply a throwaway endpoint to exercise the rest of the chart.
