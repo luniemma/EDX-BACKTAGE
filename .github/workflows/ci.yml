@@ -49,10 +49,11 @@ jobs:
             -f deploy/helm/rhdh/values-dev.yaml \
             > /tmp/rendered-dev.yaml
 
-      # lean ships without a host committed for the same reason staging and
-      # prod ship without a database host: the NLB that ingress-nginx creates
-      # does not exist until terraform/platform-addons is applied. Supply a
-      # throwaway one to exercise the rest of the chart.
+      # lean now ships without a host AND without a database host: the NLB
+      # comes from terraform/platform-addons and the endpoint from
+      # terraform/platform-db, so neither exists until those are applied.
+      # Supply throwaway values to exercise the rest of the chart — the same
+      # treatment staging and prod get below.
       - name: Helm template (lean)
         run: |
           helm template rhdh deploy/helm/rhdh \
@@ -60,6 +61,7 @@ jobs:
             -f deploy/helm/rhdh/values-lean.yaml \
             --set global.host=lean.ci.invalid \
             --set backstage.upstream.ingress.host=lean.ci.invalid \
+            --set backstage.upstream.backstage.appConfig.backend.database.connection.host=postgres.ci.invalid \
             > /tmp/rendered-lean.yaml
 
       # staging and prod deliberately ship without a database host committed,
