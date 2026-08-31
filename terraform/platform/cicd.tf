@@ -300,10 +300,28 @@ data "aws_iam_policy_document" "platform_plan_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # Two subjects, not one. Pull requests are the obvious case, but the drift
+    # check runs on a schedule from main — subject
+    # "repo:OWNER/REPO:ref:refs/heads/main" — and with only the pull_request
+    # subject here it could never assume this role at all:
+    #
+    #   Could not assume role with OIDC: Not authorized to perform
+    #   sts:AssumeRoleWithWebIdentity
+    #
+    # which the drift workflow then reported as drift, because a failed job
+    # and a drifted plan looked the same to it. Adding the branch subject is
+    # safe: this role is describe-only, so a scheduled run on main can read
+    # the world and change nothing.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:pull_request"]
+      values = concat(
+        ["repo:${var.github_owner}/${var.github_repo}:pull_request"],
+        [
+          for b in var.terraform_apply_branches :
+          "repo:${var.github_owner}/${var.github_repo}:ref:refs/heads/${b}"
+        ],
+      )
     }
   }
 }
