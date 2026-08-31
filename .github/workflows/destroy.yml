@@ -41,6 +41,11 @@ on:
         description: "Type: destroy edx-rhdh"
         required: true
         type: string
+      destroy_dns_zone:
+        description: "Also delete the Route53 hosted zone (breaks nameserver delegation)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # Never cancel a destroy, and never let one race an apply from the platform
@@ -324,3 +329,57 @@ jobs:
           echo "The edx-rhdh-tf-plan and edx-rhdh-tf-apply roles are intentionally kept:"
           echo "they cost nothing, and destroying them would remove the credentials"
           echo "this job runs under. Delete them by hand if you are retiring the stack."
+
+  # Last, and separately opted into. Deleting the zone breaks the nameserver
+  # delegation at the registrar, and re-creating it produces DIFFERENT
+  # nameservers — so recovery means editing the registrar and waiting out
+  # propagation, which no workflow can do for you. Nothing else here has that
+  # property.
+  #
+  # It runs after the cluster because external-dns must be gone first. That
+  # controller creates Route53 records Terraform has never seen, and the zone
+  # has force_destroy = false, so a zone destroy while they exist fails with
+  # "HostedZone is not empty". Destroying platform-addons removes external-dns,
+  # and its policy=sync makes it delete its own records on the way out.
+  dns:
+    name: destroy DNS zone
+    needs: cluster
+    if: >-
+      always() &&
+      needs.cluster.result == 'success' &&
+      inputs.destroy_dns_zone
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform-dns
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      # Report what is still in the zone before trying. If external-dns left
+      # anything behind, the destroy below fails and this output is what tells
+      # you why.
+      - name: Records remaining
+        run: |
+          set -euo pipefail
+          zone=$(terraform output -raw zone_id 2>/dev/null || true)
+          [ -n "${zone}" ] || { echo "no zone in state"; exit 0; }
+          aws route53 list-resource-record-sets --hosted-zone-id "${zone}"             --query 'ResourceRecordSets[?Type!=`NS` && Type!=`SOA`].[Name,Type]'             --output text || true
+
+      - name: Destroy
+        run: terraform destroy -input=false -auto-approve
+

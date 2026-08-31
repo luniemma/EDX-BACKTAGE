@@ -22,6 +22,7 @@ name: platform
 on:
   pull_request:
     paths:
+      - "terraform/platform-dns/**"
       - "terraform/platform/**"
       - "terraform/platform-db/**"
       - "terraform/platform-addons/**"
@@ -33,7 +34,7 @@ on:
         required: true
         default: "both"
         type: choice
-        options: [both, platform, platform-db, platform-addons]
+        options: [both, platform-dns, platform, platform-db, platform-addons]
 
 concurrency:
   # Queue, never cancel. A cancelled apply can leave an S3 lock behind, and on
@@ -65,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform, platform-db, platform-addons]
+        root: [platform-dns, platform, platform-db, platform-addons]
     defaults:
       run:
         shell: bash
@@ -99,7 +100,7 @@ jobs:
       # only touches addons is still reviewable.
       - name: Plan
         id: plan
-        continue-on-error: ${{ matrix.root != 'platform' }}
+        continue-on-error: ${{ matrix.root != 'platform' && matrix.root != 'platform-dns' }}
         run: terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
 
       - name: Comment plan on PR
@@ -137,6 +138,45 @@ jobs:
   # ------------------------------------------------------------- apply (main)
   # Two sequential jobs rather than a matrix: the addons root reads the
   # cluster root's outputs, so it must never start before that one finishes.
+  # First, and independent of everything else: a Route53 zone needs no cluster.
+  # platform-addons reads this root's outputs to scope the external-dns IAM
+  # policy, so it has to exist before the add-ons apply.
+  apply-dns:
+    name: apply (platform-dns)
+    if: >-
+      github.event_name != 'pull_request' &&
+      vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&
+      (github.event.inputs.root == null || github.event.inputs.root == 'both' || github.event.inputs.root == 'platform-dns')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform-dns
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read/write)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Apply
+        run: terraform apply -input=false -auto-approve
+
+      # The delegation cannot be automated — it lives at the registrar — so
+      # print it every run rather than only on creation.
+      - name: Nameservers
+        run: terraform output nameservers || true
+
   apply-platform:
     name: apply (platform)
     if: >-
@@ -216,12 +256,13 @@ jobs:
 
   apply-addons:
     name: apply (platform-addons)
-    needs: [apply-platform, apply-db]
+    needs: [apply-dns, apply-platform, apply-db]
     # `always()` so a dispatch that targets addons alone still runs when the
     # cluster job was skipped — but not when it actually failed.
     if: >-
       always() &&
       needs.apply-platform.result != 'failure' &&
+      needs.apply-dns.result != 'failure' &&
       needs.apply-db.result != 'failure' &&
       needs.apply-platform.result != 'cancelled' &&
       github.event_name != 'pull_request' &&
