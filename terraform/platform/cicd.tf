@@ -39,6 +39,10 @@ locals {
     "arn:${local.partition}:iam::${local.account_id}:role/${var.name}-*",
     "arn:${local.partition}:iam::${local.account_id}:policy/${var.name}-*",
   ]
+
+  # AWS-published parameters, so the ARN carries no account id — that empty
+  # field between the region and "parameter" is deliberate, not a typo.
+  eks_ami_parameters = "arn:${local.partition}:ssm:${var.aws_region}::parameter/aws/service/eks/*"
 }
 
 data "aws_iam_policy_document" "platform_apply_assume" {
@@ -195,6 +199,16 @@ data "aws_iam_policy_document" "platform_apply" {
     resources = ["*"]
   }
 
+  # Same public SSM parameters the plan role needs; the node group resolves its
+  # AMI release version on apply too. This only worked from a developer
+  # machine because that identity is broadly privileged.
+  statement {
+    sid       = "ReadEksAmiParameters"
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = [local.eks_ami_parameters]
+  }
+
   # This root's state, and the addons root's — the addons workflow runs under
   # the same role and reads this one's outputs.
   statement {
@@ -269,6 +283,16 @@ data "aws_iam_policy_document" "platform_plan" {
       "iam:List*",
     ]
     resources = ["*"]
+  }
+
+  # The EKS module resolves the node group's AMI release version from a public
+  # SSM parameter, on every plan as well as every apply. Without this a plan
+  # dies at data.aws_ssm_parameter.ami before showing any diff.
+  statement {
+    sid       = "ReadEksAmiParameters"
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = [local.eks_ami_parameters]
   }
 
   statement {
