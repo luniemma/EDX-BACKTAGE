@@ -29,10 +29,24 @@ resource "helm_release" "ingress_nginx" {
       service = {
         type = "LoadBalancer"
         annotations = {
-          # NLB, not the legacy Classic ELB the chart would otherwise get.
-          "service.beta.kubernetes.io/aws-load-balancer-type"            = "external"
-          "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "instance"
-          "service.beta.kubernetes.io/aws-load-balancer-scheme"          = "internet-facing"
+          # "nlb", NOT "external". They look interchangeable and are not:
+          # "external" tells the in-tree AWS cloud provider to ignore this
+          # Service and leave it to the AWS Load Balancer Controller, which
+          # this cluster does not run. The result is a Service that sits at
+          # <pending> forever with no events at all, because nothing ever
+          # attempts to reconcile it.
+          #
+          # "nlb" keeps the in-tree provider responsible and gets a real NLB
+          # with no extra controller to install, no IRSA role, and no extra
+          # pods on a two-node cluster. Install the AWS Load Balancer
+          # Controller and switch back to "external" only when something here
+          # actually needs ALBs or IP-target mode.
+          #
+          # The scheme and nlb-target-type annotations are Load Balancer
+          # Controller vocabulary and are silently ignored by the in-tree
+          # provider, so they are gone. Internet-facing and instance targets
+          # are its defaults anyway.
+          "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
         }
       }
 
