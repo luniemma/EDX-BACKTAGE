@@ -50,6 +50,21 @@ backstage:
     postgresql:
       enabled: true
       primary:
+        # Without this the pod crash-loops immediately on:
+        #   mkdir: cannot create directory
+        #   '/var/lib/pgsql/data/userdata': Permission denied
+        #
+        # The chart ships podSecurityContext.enabled: false because on
+        # OpenShift the SCC assigns an arbitrary UID in group 0 and the image
+        # is built to cope. On vanilla EKS nothing does that, so the freshly
+        # attached EBS volume stays root-owned and the non-root postgres user
+        # cannot write to its own data directory.
+        #
+        # fsGroup makes the kubelet chown the volume to that group on mount.
+        # 26 is the postgres uid/gid in quay.io/fedora/postgresql-15.
+        podSecurityContext:
+          enabled: true
+          fsGroup: 26
         persistence:
           size: 8Gi
           # Named explicitly rather than relying on a cluster default — see

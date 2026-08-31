@@ -1,18 +1,29 @@
 ########################################
 # Storage class
 ########################################
-# Deliberately NOT marked as the cluster default. EKS ships its own gp2 class
-# and, depending on version, may or may not mark it default; adding a second
-# default makes which one wins undefined. The RHDH values name this class
-# explicitly instead, so binding is deterministic either way.
+# This IS the cluster default, and it has to be. The original reasoning here
+# was that EKS ships a gp2 class which might already be default, and two
+# defaults make the winner undefined — true in general, false on this cluster:
+# `kubectl get sc` shows gp2 present but NOT marked default, so leaving gp3
+# unmarked left the cluster with no default at all.
+#
+# That is not a cosmetic gap. The RHDH chart mounts its dynamic-plugins-root
+# as a generic ephemeral volume with no storageClassName, so with no default
+# the PVC never binds and the portal sits Pending forever on
+# "pod has unbound immediate PersistentVolumeClaims". Naming a class in values
+# only covers the volumes whose class we control; this covers the rest.
 #
 # gp3 over gp2: same durability, ~20% cheaper per GiB, and baseline 3000 IOPS
 # instead of 100 for a small volume — which matters when the volume is a
-# database.
+# database. gp2 also still uses the deprecated in-tree provisioner.
 
 resource "kubernetes_storage_class" "gp3" {
   metadata {
     name = "gp3"
+
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
   }
 
   storage_provisioner = "ebs.csi.aws.com"
