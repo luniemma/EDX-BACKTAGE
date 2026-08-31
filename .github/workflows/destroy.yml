@@ -124,6 +124,59 @@ jobs:
             kubectl patch "${app}" -n argocd --type merge -p '{"metadata":{"finalizers":[]}}' || true
           done
 
+      # Deleting the workloads is NOT enough to release their disks. A
+      # StatefulSet's volumeClaimTemplates PVCs are retained on purpose when
+      # the StatefulSet goes -- Kubernetes will not throw away a database
+      # volume just because its controller was removed. Nothing else deletes
+      # them either, so the EBS volumes sit there `available` while the
+      # cluster is torn down around them, and once the cluster is gone the
+      # CSI driver that owned them no longer exists to clean up. The volumes
+      # then bill forever with no Kubernetes object and no state file
+      # referring to them.
+      #
+      # Deleting the PVCs here, while the CSI controller is still running, is
+      # what makes it release the volumes. gp3 is ReclaimPolicy: Delete, so
+      # releasing is deleting.
+      - name: Release persistent volumes before the cluster goes
+        run: |
+          set -euo pipefail
+          if ! aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+            echo "cluster does not exist — nothing to release"
+            exit 0
+          fi
+
+          # Every namespace except the ones that only hold platform add-ons;
+          # those own no PVCs in this profile, and skipping them keeps this
+          # from racing the addons destroy.
+          pvcs=$(kubectl get pvc --all-namespaces \
+            --no-headers -o custom-columns=NS:.metadata.namespace,N:.metadata.name 2>/dev/null || true)
+          if [ -z "${pvcs}" ]; then
+            echo "no PersistentVolumeClaims found"
+          else
+            echo "${pvcs}"
+            echo "${pvcs}" | while read -r ns name; do
+              [ -n "${ns}" ] || continue
+              echo "deleting pvc ${ns}/${name}"
+              kubectl delete pvc "${name}" -n "${ns}" --timeout=120s || true
+            done
+          fi
+
+          # Confirm the disks actually went, rather than trusting the delete.
+          # Anything still `available` and tagged for this cluster is a leak.
+          for i in $(seq 1 24); do
+            left=$(aws ec2 describe-volumes --region "${AWS_REGION}" \
+              --filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+              --query 'length(Volumes)' --output text 2>/dev/null || echo 0)
+            [ "${left}" = "0" ] && { echo "all cluster volumes released"; exit 0; }
+            echo "waiting for ${left} volume(s) to be released... (${i}/24)"; sleep 10
+          done
+
+          echo "::error::volumes tagged for ${CLUSTER_NAME} still exist — they will be orphaned if the cluster is destroyed now"
+          aws ec2 describe-volumes --region "${AWS_REGION}" \
+            --filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+            --query 'Volumes[].[VolumeId,Size,State]' --output text
+          exit 1
+
   addons:
     name: destroy platform-addons
     needs: argocd-apps
