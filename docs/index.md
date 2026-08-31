@@ -15,6 +15,8 @@ These pages are built by TechDocs from the `docs/` directory of this repository.
 
 | If you want to | Read |
 | --- | --- |
+| Stand up, operate or tear down the cluster | [Platform guide](PLATFORM.md) |
+| Debug a broken deployment | [Platform guide → Troubleshooting](PLATFORM.md#troubleshooting) |
 | Configure or upgrade the portal | `deploy/helm/rhdh/README.md` |
 | Take this to production, with real sign-in | [Enterprise setup](ENTERPRISE-SETUP.md) |
 | Understand what is deliberately not done yet | [Enterprise roadmap](ENTERPRISE-ROADMAP.md) |
