@@ -89,10 +89,25 @@ module "eks" {
 
   # Managed addons. All four are free; coredns and kube-proxy are required for
   # a functioning cluster and vpc-cni is what gives pods VPC addresses.
+  #
+  # `before_compute` is load-bearing, not a tuning knob. The module creates
+  # after-compute addons only once the node group reports ACTIVE, and a node
+  # cannot become Ready without a CNI ("cni plugin not initialized"), so
+  # leaving vpc-cni until after compute deadlocks: the node group waits the
+  # full hour for nodes that are waiting for the addon that is waiting for the
+  # node group. kube-proxy joins it because a node with no kube-proxy has no
+  # Service networking.
+  #
+  # coredns stays after compute deliberately — it is a Deployment, not a
+  # DaemonSet, so it needs a schedulable node to exist first.
   addons = {
+    vpc-cni = {
+      before_compute = true
+    }
+    kube-proxy = {
+      before_compute = true
+    }
     coredns                = {}
-    kube-proxy             = {}
-    vpc-cni                = {}
     eks-pod-identity-agent = {}
   }
 

@@ -20,8 +20,10 @@ global:
   #   kubectl -n ingress-nginx get svc ingress-nginx-controller \
   #     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
   #
-  # e.g. host: "k8s-ingressn-abc123.elb.us-east-1.amazonaws.com"
-  host: ""
+  # Hostname only, no scheme and no port. The RHDH chart interpolates this into
+  # 'https://{{ rhdh.hostname }}', so a scheme here yields "https://http://..."
+  # and an Ingress host with a port is rejected by the API server.
+  host: "afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com"
 
   edx:
     logLevel: info
@@ -32,8 +34,10 @@ backstage:
       enabled: true
       className: nginx
       # Same value as global.host. No port suffix here — an Ingress host with
-      # a port is rejected by the API server.
-      host: ""
+      # a port is rejected by the API server. Leaving this empty renders an
+      # Ingress rule with no host, which matches every request reaching the
+      # controller rather than failing loudly.
+      host: afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
       tls:
         # No certificate yet. The NLB hostname is not a name you can issue a
         # public certificate for; put a real domain in front and switch this
@@ -59,6 +63,24 @@ backstage:
             memory: 1Gi
 
     backstage:
+      # The chart derives app.baseUrl, backend.baseUrl and backend.cors.origin
+      # from global.host as 'https://<host>' — hardcoded scheme. This profile
+      # terminates no TLS (there is no certificate you can issue for an
+      # amazonaws.com NLB name), so the NLB serves plain HTTP on :80 and those
+      # https URLs would be wrong: the portal would load and then every API
+      # call from the frontend would fail against an origin nothing serves.
+      #
+      # Override all three explicitly. Change these together with global.host,
+      # and switch them to https the moment a real domain and certificate are
+      # in front of this.
+      appConfig:
+        app:
+          baseUrl: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+        backend:
+          baseUrl: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+          cors:
+            origin: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+
       # Two t3.medium Spot nodes total, shared with ingress-nginx, ArgoCD and
       # the EBS CSI controller. One RHDH replica is what actually fits.
       replicas: 1
