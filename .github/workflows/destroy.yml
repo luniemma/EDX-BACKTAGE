@@ -1,0 +1,223 @@
+name: destroy platform
+
+# Tears down the billing resources this platform creates. Manual only — there
+# is deliberately no push or schedule trigger, and no path filter that could
+# fire it as a side effect of editing something.
+#
+# Ordering is not cosmetic. Three things have to happen in sequence or the
+# teardown leaves wreckage behind:
+#
+#   1. ArgoCD Applications are deleted FIRST. They carry
+#      resources-finalizer.argocd.argoproj.io, and a finalizer with no
+#      controller left to process it wedges the namespace in Terminating
+#      forever — after which the destroy cannot finish either.
+#
+#   2. platform-addons is destroyed BEFORE platform. The NLB is owned by the
+#      ingress-nginx Service, not by Terraform: removing the Service is what
+#      makes the in-tree cloud provider delete the load balancer. Destroy the
+#      cluster first and the NLB survives it, still billing, with nothing left
+#      in any state file that refers to it.
+#
+#   3. The CI roles are deliberately NOT destroyed. edx-rhdh-tf-apply is
+#      created by the very root this workflow destroys, so a full
+#      `terraform destroy` would delete the credentials it is running under
+#      and fail partway through, leaving state half-applied. IAM roles are
+#      free, so keeping them costs nothing and leaves the stack re-appliable.
+#      See "What survives" below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "What to tear down"
+        required: true
+        default: addons-only
+        type: choice
+        options:
+          - addons-only
+          - everything
+      confirm:
+        description: "Type: destroy edx-rhdh"
+        required: true
+        type: string
+
+concurrency:
+  # Never cancel a destroy, and never let one race an apply from the platform
+  # workflow — a cancelled destroy can strand an S3 lock and a half-deleted
+  # cluster. Shares a group name with platform.yml on purpose.
+  group: platform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.14.7"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+  CLUSTER_NAME: edx-rhdh
+
+jobs:
+  # A separate job so the confirmation is checked before any AWS credentials
+  # are issued, and so the run stops with an obvious red X rather than an
+  # opaque failure inside a terraform step.
+  guard:
+    name: confirm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the confirmation phrase
+        run: |
+          set -euo pipefail
+          expected="destroy ${CLUSTER_NAME}"
+          if [ "${{ inputs.confirm }}" != "${expected}" ]; then
+            echo "::error::confirmation did not match. Type exactly: ${expected}"
+            exit 1
+          fi
+          echo "Confirmed. Scope: ${{ inputs.scope }}"
+
+      # The apply role trusts refs/heads/main only. Dispatching from another
+      # branch produces a different OIDC subject and the role assumption fails
+      # with an unhelpful STS error, so say so here instead.
+      - name: Must be dispatched from main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::dispatch this from main — the apply role's trust policy pins that branch"
+            exit 1
+          fi
+
+  # Deleting the Applications is what releases the finalizers. Done before the
+  # addons destroy, while the ArgoCD controller is still running to process
+  # them.
+  argocd-apps:
+    name: remove ArgoCD applications
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # A cluster that is already gone is not an error here — this workflow
+      # has to be safe to re-run after a partial teardown.
+      - name: Delete Applications, if the cluster still exists
+        run: |
+          set -euo pipefail
+          if ! aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+            echo "cluster ${CLUSTER_NAME} does not exist — nothing to clean up"
+            exit 0
+          fi
+          aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}"
+
+          # --cascade=foreground so this waits for the finalizer to actually
+          # run rather than returning as soon as deletionTimestamp is set.
+          kubectl delete applications.argoproj.io -n argocd --all \
+            --cascade=foreground --timeout=300s || true
+
+          # If a finalizer is genuinely stuck the namespace never terminates,
+          # which blocks the whole destroy. Strip them and move on; the
+          # underlying objects go with the cluster anyway.
+          for app in $(kubectl get applications.argoproj.io -n argocd -o name 2>/dev/null || true); do
+            echo "::warning::${app} did not finalize, removing its finalizers"
+            kubectl patch "${app}" -n argocd --type merge -p '{"metadata":{"finalizers":[]}}' || true
+          done
+
+  addons:
+    name: destroy platform-addons
+    needs: argocd-apps
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform-addons
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      # Removing the ingress-nginx release deletes the Service, which is what
+      # actually deletes the NLB. Everything after this depends on that having
+      # happened.
+      - name: Destroy
+        run: terraform destroy -input=false -auto-approve
+
+      - name: Confirm the load balancer is gone
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            n=$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" \
+                  --query 'length(LoadBalancers)' --output text 2>/dev/null || echo 0)
+            [ "${n}" = "0" ] && { echo "no load balancers remain"; exit 0; }
+            echo "waiting for ${n} load balancer(s) to go away... (${i}/30)"; sleep 10
+          done
+          echo "::error::a load balancer is still present — do NOT destroy the cluster yet, it would be orphaned and keep billing"
+          aws elbv2 describe-load-balancers --region "${AWS_REGION}" \
+            --query 'LoadBalancers[].[LoadBalancerName,DNSName]' --output text
+          exit 1
+
+  cluster:
+    name: destroy cluster and VPC
+    needs: addons
+    if: inputs.scope == 'everything'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      # Targeted, NOT a bare `terraform destroy`. An untargeted destroy would
+      # include aws_iam_role.platform_apply — the role this step is currently
+      # authenticated as — and terraform would delete its own credentials
+      # mid-run. These targets cover everything that bills: the control plane,
+      # the nodes, their volumes, the KMS key and the log group.
+      - name: Destroy
+        run: |
+          terraform destroy -input=false -auto-approve \
+            -target=aws_eks_addon.ebs_csi \
+            -target=aws_iam_role_policy_attachment.ebs_csi \
+            -target=aws_iam_role.ebs_csi \
+            -target=module.eks \
+            -target=module.vpc
+
+      - name: Report what is left
+        run: |
+          set -euo pipefail
+          echo "Remaining EKS clusters:"
+          aws eks list-clusters --region "${AWS_REGION}" --query 'clusters' --output text || true
+          echo "Remaining non-default VPCs:"
+          aws ec2 describe-vpcs --region "${AWS_REGION}" \
+            --query 'Vpcs[?IsDefault==`false`].VpcId' --output text || true
+          echo
+          echo "The edx-rhdh-tf-plan and edx-rhdh-tf-apply roles are intentionally kept:"
+          echo "they cost nothing, and destroying them would remove the credentials"
+          echo "this job runs under. Delete them by hand if you are retiring the stack."
