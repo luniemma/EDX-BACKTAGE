@@ -23,7 +23,7 @@ global:
   # Hostname only, no scheme and no port. The RHDH chart interpolates this into
   # 'https://{{ rhdh.hostname }}', so a scheme here yields "https://http://..."
   # and an Ingress host with a port is rejected by the API server.
-  host: "afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com"
+  host: "a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com"
 
   edx:
     logLevel: info
@@ -37,7 +37,7 @@ backstage:
       # a port is rejected by the API server. Leaving this empty renders an
       # Ingress rule with no host, which matches every request reaching the
       # controller rather than failing loudly.
-      host: afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+      host: a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
       tls:
         # No certificate yet. The NLB hostname is not a name you can issue a
         # public certificate for; put a real domain in front and switch this
@@ -98,11 +98,11 @@ backstage:
       # in front of this.
       appConfig:
         app:
-          baseUrl: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+          baseUrl: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
         backend:
-          baseUrl: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+          baseUrl: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
           cors:
-            origin: http://afee3344e2095449da6fb06b0a1f1ba1-70f2cc1e0c93c523.elb.us-east-1.amazonaws.com
+            origin: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
 
           database:
             client: pg
@@ -115,7 +115,7 @@ backstage:
               #
               #   terraform -chdir=terraform/platform-db output -raw endpoint
               #
-              host: ""
+              host: edx-rhdh-postgres.cxuqo860cpxd.us-east-1.rds.amazonaws.com
               port: 5432
               # Must match db_username in terraform/platform-db.
               user: backstage
