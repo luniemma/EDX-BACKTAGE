@@ -27,11 +27,31 @@ Roughly **$115/month** before data transfer, at `us-east-1` list prices:
 | EKS control plane | 73 |
 | 2 × `t3.medium` Spot | 18 |
 | NLB (one, shared by every Ingress) | 16 |
-| 2 × 40 GiB gp3 root volumes | 6 |
 | Public IPv4 addresses | 7 |
-| CloudWatch control-plane logs (7-day retention) | ~1 |
+| 2 × 30 GiB gp3 root volumes | 5 |
+| CloudWatch control-plane logs (api + authenticator, 7 days) | <1 |
 
-The control plane is 63% of that and is not reducible while this is EKS.
+**The control plane is 63% of that and is not reducible while this is EKS.**
+Everything below it has already been trimmed: Spot rather than on-demand
+(−$40), one shared NLB rather than an ALB per Ingress, no NAT gateway (−$33),
+root volumes sized from what actually lands on them rather than a round
+number, and the audit log dropped from control-plane logging — it is the
+chattiest of the three and most of the log bill on an idle cluster.
+
+### Reducing it further
+
+In descending order of saving, and increasing order of what it costs you:
+
+| Change | Saves | What you give up |
+| --- | --- | --- |
+| Leave EKS for k3s on one EC2 | ~$95 | Managed control plane, EKS addons, IRSA |
+| `node_desired_size = 1` | ~$14 | All redundancy. A Spot reclamation takes the whole platform until a replacement joins. Fits now that PostgreSQL is on RDS and ArgoCD's unused components are off, but RHDH's 2Gi limit leaves little headroom. |
+| NodePort instead of the NLB | $16 | A stable address. Node public IPs change on every Spot replacement, so the portal URL churns — which is why this is not the default. |
+| `backup_retention_days = 1` on RDS | <$1 | Six days of recovery window, for the thing the database was moved to RDS to get. |
+
+The first row is the only one that changes the order of magnitude. If the
+target is genuinely lowest cost rather than lowest cost *on EKS*, that is the
+honest answer — this profile is the cheapest EKS, not the cheapest platform.
 
 **What was given up to get there**, all deliberate:
 

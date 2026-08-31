@@ -389,10 +389,32 @@ one.
 | NLB | 16 |
 | RDS `db.t4g.micro` + 20 GiB gp3 + backups | 15 |
 | Public IPv4 × 2 | 7 |
-| 2 × 40 GiB gp3 root volumes | 6 |
-| Control-plane logs, 7-day retention | ~1 |
+| 2 × 30 GiB gp3 root volumes | 5 |
+| Control-plane logs (api + authenticator, 7 days) | <1 |
 
-The control plane is 56% of the total and is not reducible while this is EKS.
+**The control plane is 57% of the total and is not reducible while this is
+EKS.** Everything under it is already trimmed: Spot rather than on-demand,
+one shared NLB rather than an ALB per Ingress, no NAT gateway, root volumes
+sized from what lands on them, the audit log dropped from control-plane
+logging, and ArgoCD's dex and notifications controllers disabled because
+nothing here configures SSO or a notification destination.
+
+RDS is at its floor: `db.t4g.micro` is the smallest PostgreSQL class, 20 GiB
+the minimum for gp3, and Performance Insights, enhanced monitoring and
+Multi-AZ are all off.
+
+### If it still costs too much
+
+| Change | Saves | Cost to you |
+| --- | --- | --- |
+| k3s on one EC2 instead of EKS | ~$95 | Managed control plane, EKS addons, IRSA |
+| `node_desired_size = 1` | ~$14 | All redundancy — a Spot reclamation takes the platform down until a node rejoins |
+| NodePort instead of the NLB | $16 | A stable URL; node IPs churn with Spot replacements |
+| Drop RDS, return to the in-cluster pod | $15 | Backups, and surviving the cluster |
+
+Only the first changes the order of magnitude. **This is the cheapest EKS,
+not the cheapest platform** — if the target is genuinely lowest cost, EKS is
+the wrong base.
 
 > ℹ️ **Against the documented budget**
 >

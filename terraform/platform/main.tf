@@ -91,9 +91,12 @@ module "eks" {
   # separate aws-auth ConfigMap dance.
   enable_cluster_creator_admin_permissions = true
 
-  # Control plane logs go to CloudWatch and are billed on ingestion, so the
-  # module's 90-day default retention is 90 days of storage nobody reads. A
-  # week is enough to debug a bad rollout.
+  # Control plane logs go to CloudWatch and are billed twice over: once on
+  # ingestion, then again on storage for as long as they are retained. The
+  # module defaults to 90 days of retention and includes the audit log, which
+  # is the expensive half of the ingestion — see var.enabled_cluster_log_types.
+  # A week of retention is enough to debug a bad rollout.
+  enabled_log_types                      = var.enabled_cluster_log_types
   cloudwatch_log_group_retention_in_days = 7
 
   # Managed addons. All four are free; coredns and kube-proxy are required for
