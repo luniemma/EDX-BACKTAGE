@@ -115,9 +115,55 @@ that does not answer.
 
 ## Teardown
 
-`platform-addons` first, or the NLB it created is orphaned and keeps billing:
+Use the workflow — it enforces an ordering that is easy to get wrong by hand:
+
+```
+gh workflow run destroy.yml --ref main \
+  -f scope=everything -f confirm="destroy edx-rhdh"
+```
+
+`scope=addons-only` stops after removing ingress-nginx and ArgoCD, which drops
+the NLB (~$16/month) and leaves the cluster running. `scope=everything` also
+destroys the node group, control plane and VPC.
+
+Manual dispatch only, and the confirmation phrase must match exactly. It must
+be dispatched from `main`: the apply role's trust policy pins that branch, and
+from anywhere else the role assumption fails with an unhelpful STS error.
+
+### Why the order matters
+
+1. **ArgoCD Applications are deleted first.** They carry
+   `resources-finalizer.argocd.argoproj.io`. Remove the ArgoCD controller
+   while an Application still exists and nothing is left to process the
+   finalizer, so the namespace wedges in `Terminating` and the destroy cannot
+   complete.
+2. **`platform-addons` is destroyed before `platform`.** The NLB belongs to
+   the ingress-nginx Service, not to Terraform — deleting the Service is what
+   makes the in-tree cloud provider delete the load balancer. Destroy the
+   cluster first and the NLB outlives it, still billing, with nothing in any
+   state file pointing at it. The workflow blocks on this: it polls until no
+   load balancers remain and refuses to touch the cluster otherwise.
+
+### What survives
+
+The `edx-rhdh-tf-plan` and `edx-rhdh-tf-apply` roles are kept on purpose, so
+the cluster job runs a *targeted* destroy rather than a bare one. An untargeted
+`terraform destroy` would include `aws_iam_role.platform_apply` — the role the
+job is authenticated as — and Terraform would delete its own credentials
+partway through, leaving the state half-applied and the rest of the teardown
+stranded.
+
+IAM roles are free, so keeping them costs nothing and leaves the stack
+re-appliable. Delete them by hand if you are retiring it for good.
+
+Doing it locally instead, same ordering, with the same caveat about the roles:
 
 ```
 terraform -chdir=terraform/platform-addons destroy
-terraform -chdir=terraform/platform       destroy
+terraform -chdir=terraform/platform destroy \
+  -target=aws_eks_addon.ebs_csi \
+  -target=aws_iam_role_policy_attachment.ebs_csi \
+  -target=aws_iam_role.ebs_csi \
+  -target=module.eks \
+  -target=module.vpc
 ```
