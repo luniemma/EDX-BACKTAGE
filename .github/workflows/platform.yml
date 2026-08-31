@@ -4,16 +4,26 @@ name: platform
 # `terraform` workflow on purpose: that one owns the ECR/CI plumbing and runs
 # under a role that cannot touch a cluster, and vice versa.
 
+# Applying is dispatch-only. There is deliberately no `push` trigger.
+#
+# This started as apply-on-merge, which is the normal shape for Terraform CD
+# and is wrong for this stack. The cluster is an evaluation environment that
+# gets torn down: after a teardown the state is empty while main still
+# describes a cluster, so the next merge that touches terraform/platform/**
+# does not "converge" anything — it silently rebuilds the whole thing.
+#
+# That is not hypothetical. Merging the RDS pull request, which changed no
+# cluster resource anyone was thinking about, recreated the EKS control plane,
+# a node group and a VPC, and they billed unattended for five hours before
+# anyone looked.
+#
+# Plans still run automatically on every pull request, so review is unchanged.
+# Only spending money now requires someone to ask for it by name.
 on:
   pull_request:
     paths:
       - "terraform/platform/**"
-      - "terraform/platform-addons/**"
-      - ".github/workflows/platform.yml"
-  push:
-    branches: [main]
-    paths:
-      - "terraform/platform/**"
+      - "terraform/platform-db/**"
       - "terraform/platform-addons/**"
       - ".github/workflows/platform.yml"
   workflow_dispatch:
