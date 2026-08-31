@@ -78,6 +78,26 @@ backstage:
             memory: 1Gi
 
     backstage:
+      # Same volume-ownership problem as PostgreSQL, different symptom. The
+      # init container unpacks dynamic plugins onto a PVC and dies on:
+      #
+      #   PermissionError: [Errno 13] Permission denied:
+      #   '/dynamic-plugins-root/install-dynamic-plugins.lock'
+      #
+      # values.yaml sets podSecurityContext with runAsNonRoot and a seccomp
+      # profile but deliberately no runAsUser or fsGroup, reasoning that
+      # OpenShift assigns a uid per namespace and pinning one breaks it. That
+      # is right about runAsUser and wrong to extend to fsGroup: fsGroup does
+      # not pin the uid, it tells the kubelet which group to chown the mounted
+      # volume to. Without it a fresh EBS volume stays root-owned and the
+      # non-root image cannot write to it.
+      #
+      # 1001 is the uid/gid the RHDH image runs as. Kubernetes adds fsGroup to
+      # the pod's supplementary groups, so the process is in it regardless of
+      # its primary gid.
+      podSecurityContext:
+        fsGroup: 1001
+
       # The chart derives app.baseUrl, backend.baseUrl and backend.cors.origin
       # from global.host as 'https://<host>' — hardcoded scheme. This profile
       # terminates no TLS (there is no certificate you can issue for an
