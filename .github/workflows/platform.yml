@@ -23,7 +23,7 @@ on:
         required: true
         default: "both"
         type: choice
-        options: [both, platform, platform-addons]
+        options: [both, platform, platform-db, platform-addons]
 
 concurrency:
   # Queue, never cancel. A cancelled apply can leave an S3 lock behind, and on
@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform, platform-addons]
+        root: [platform, platform-db, platform-addons]
     defaults:
       run:
         shell: bash
@@ -89,7 +89,7 @@ jobs:
       # only touches addons is still reviewable.
       - name: Plan
         id: plan
-        continue-on-error: ${{ matrix.root == 'platform-addons' }}
+        continue-on-error: ${{ matrix.root != 'platform' }}
         run: terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
 
       - name: Comment plan on PR
@@ -161,14 +161,58 @@ jobs:
       - name: Outputs
         run: terraform output
 
+  # Between the cluster and the add-ons: it needs the VPC's private subnets
+  # and the node security group from the platform root, and nothing in the
+  # add-ons depends on it. Its own state key, so a cluster teardown cannot
+  # take the database with it.
+  apply-db:
+    name: apply (platform-db)
+    needs: apply-platform
+    if: >-
+      always() &&
+      needs.apply-platform.result != 'failure' &&
+      needs.apply-platform.result != 'cancelled' &&
+      github.event_name != 'pull_request' &&
+      vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&
+      (github.event.inputs.root == null || github.event.inputs.root == 'both' || github.event.inputs.root == 'platform-db')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform-db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read/write)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      # First creation takes 5-10 minutes; RDS reports `creating` for most of it.
+      - name: Apply
+        run: terraform apply -input=false -auto-approve
+
+      - name: Outputs
+        run: terraform output
+
   apply-addons:
     name: apply (platform-addons)
-    needs: apply-platform
+    needs: [apply-platform, apply-db]
     # `always()` so a dispatch that targets addons alone still runs when the
     # cluster job was skipped — but not when it actually failed.
     if: >-
       always() &&
       needs.apply-platform.result != 'failure' &&
+      needs.apply-db.result != 'failure' &&
       needs.apply-platform.result != 'cancelled' &&
       github.event_name != 'pull_request' &&
       vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&

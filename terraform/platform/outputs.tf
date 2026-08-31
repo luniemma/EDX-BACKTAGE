@@ -33,6 +33,20 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnets
 }
 
+output "private_subnet_ids" {
+  description = "No-egress subnets. The database lives here; nothing routable does."
+  value       = module.vpc.private_subnets
+}
+
+output "node_security_group_id" {
+  description = <<-EOT
+    The node group's security group. Anything the pods must reach — the
+    database above all — allows ingress from this and nothing else, so the
+    database is never open to the VPC at large.
+  EOT
+  value       = module.eks.node_security_group_id
+}
+
 output "region" {
   description = "Region, so downstream roots do not have to be told twice."
   value       = var.aws_region

@@ -27,6 +27,14 @@ locals {
   # VPC address to every pod, so subnets need to be generous relative to pod
   # count, not node count.
   public_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 4, i)]
+
+  # Offset by 8 so public and private never collide as az_count grows.
+  #
+  # These carry no NAT gateway and no route to the internet, and that costs
+  # nothing: a subnet is free, only the NAT is not. RDS needs no outbound
+  # internet access, so the database gets proper private isolation without
+  # reintroducing the $33/month this profile was built to avoid.
+  private_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 4, i + 8)]
 }
 
 module "vpc" {
@@ -36,8 +44,9 @@ module "vpc" {
   name = var.name
   cidr = var.vpc_cidr
 
-  azs            = local.azs
-  public_subnets = local.public_subnets
+  azs             = local.azs
+  public_subnets  = local.public_subnets
+  private_subnets = local.private_subnets
 
   # Nodes need a routable address on launch; there is no NAT to fall back to.
   map_public_ip_on_launch = true
@@ -118,6 +127,20 @@ module "eks" {
       # re-place anything evicted. Do not move a database onto this node group.
       capacity_type  = "SPOT"
       instance_types = var.node_instance_types
+
+      # Named explicitly, and this is load-bearing rather than cosmetic. Left
+      # to the module the role is named from the node group KEY, giving
+      # "default-eks-node-group-<hash>" — which does not match the
+      # "edx-rhdh-*" prefix the CI roles are scoped to. The first CI teardown
+      # failed on exactly that:
+      #
+      #   AccessDenied: edx-rhdh-tf-apply is not authorized to perform:
+      #   iam:DetachRolePolicy on role default-eks-node-group-125f437...
+      #
+      # and left the role orphaned. Creation never hit it because the cluster
+      # was first built from a broadly privileged developer identity.
+      iam_role_name            = "${var.name}-node"
+      iam_role_use_name_prefix = false
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
