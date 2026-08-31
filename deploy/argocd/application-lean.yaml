@@ -25,7 +25,10 @@ spec:
       # portal whose frontend calls the wrong origin.
   destination:
     server: https://kubernetes.default.svc
-    namespace: rhdh
+    # Must match the project's destination glob, which is "rhdh-*". A bare
+    # "rhdh" does not match it and the Application is refused at sync time
+    # with a project-permission error rather than anything about namespaces.
+    namespace: rhdh-lean
   syncPolicy:
     automated:
       prune: true
