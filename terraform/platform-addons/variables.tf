@@ -31,3 +31,31 @@ variable "ingress_class" {
   type        = string
   default     = "nginx"
 }
+
+variable "name" {
+  description = "Name prefix, matching the platform root so IAM roles stay inside the edx-rhdh-* scope the CI roles are limited to."
+  type        = string
+  default     = "edx-rhdh"
+}
+
+variable "external_dns_version" {
+  description = "external-dns chart version."
+  type        = string
+  default     = "1.15.0"
+}
+
+variable "cert_manager_version" {
+  description = "cert-manager chart version."
+  type        = string
+  default     = "v1.16.2"
+}
+
+variable "acme_email" {
+  description = <<-EOT
+    Contact address on the Let's Encrypt account. They mail it before a
+    certificate expires unrenewed, which is the only warning you get that
+    renewal has quietly broken.
+  EOT
+  type        = string
+  default     = "platform@example.com"
+}
