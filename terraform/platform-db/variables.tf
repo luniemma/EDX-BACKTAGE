@@ -12,11 +12,28 @@ variable "name" {
 
 variable "engine_version" {
   description = <<-EOT
-    PostgreSQL major.minor. 15 matches the quay.io/fedora/postgresql-15 image
-    the in-cluster profile ran, so the RHDH schema behaves identically.
+    PostgreSQL MAJOR version only, deliberately not major.minor.
+
+    RDS retires minor versions continuously, so a pinned patch rots: "15.8"
+    was pinned here and did not exist in us-east-1 at all, which failed the
+    apply with
+
+      InvalidParameterCombination: Cannot find version 15.8 for postgres
+
+    Given a bare major, RDS selects its current default minor and
+    auto_minor_version_upgrade keeps it patched. The AWS provider does prefix
+    matching on this field, so "15" does not diff against a running 15.19.
+
+    15 matches the quay.io/fedora/postgresql-15 image the in-cluster profile
+    ran, so the RHDH schema behaves identically.
   EOT
   type        = string
-  default     = "15.8"
+  default     = "15"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.engine_version))
+    error_message = "Use the major version only (e.g. \"15\"); pinned minors are retired by RDS and rot."
+  }
 }
 
 variable "instance_class" {
