@@ -119,6 +119,24 @@ resource "helm_release" "argocd" {
     applicationSet = {
       replicas = 1
     }
+
+    # Two components this platform installs and never uses. Neither is billed
+    # directly, but both hold memory on a two-node cluster where memory is the
+    # binding constraint on whether a second node is needed at all.
+    #
+    # dex is ArgoCD's SSO broker. Nothing configures SSO here — the admin
+    # password is a Secret and access is by port-forward — so it brokers
+    # nothing. Turning it on is a values change, not a reinstall.
+    dex = {
+      enabled = false
+    }
+
+    # notifications delivers sync events to Slack, email and similar. No
+    # destination is configured, so it watches Applications to send messages
+    # nowhere.
+    notifications = {
+      enabled = false
+    }
     server = {
       replicas = 1
       resources = {

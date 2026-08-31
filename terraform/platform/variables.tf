@@ -74,13 +74,42 @@ variable "node_max_size" {
 
 variable "node_disk_size" {
   description = <<-EOT
-    Root volume per node, GiB. RHDH's init container unpacks every dynamic
-    plugin onto the node's ephemeral storage, and values.yaml asks for a 5Gi
-    ephemeral-storage limit, so this cannot be trimmed to the 20Gi default
-    without risking eviction.
+    Root volume per node, GiB.
+
+    Sized from what actually lands on it, not a round number: the AL2023 image
+    (~3 GiB), the RHDH image (~2 GiB) and its unpacked dynamic plugins, plus
+    the 5Gi ephemeral-storage limit values.yaml requests. That is ~12 GiB in
+    use, so 30 leaves better than 2x headroom while costing a third less than
+    the 40 this started at.
+
+    The AMI default of 20 is genuinely too small — the plugin unpack evicts
+    the pod under it.
   EOT
   type        = number
-  default     = 40
+  default     = 30
+
+  validation {
+    condition     = var.node_disk_size >= 25
+    error_message = "Below ~25 GiB the RHDH plugin unpack risks disk-pressure eviction."
+  }
+}
+
+variable "enabled_cluster_log_types" {
+  description = <<-EOT
+    Control plane logs shipped to CloudWatch, billed per GiB ingested.
+
+    The module's default adds "audit", which logs every single API call and is
+    by far the chattiest of the three — on an idle cluster it is most of the
+    log bill on its own. It is dropped here because this is an evaluation
+    cluster that gets torn down, and "api" plus "authenticator" still answer
+    the questions that actually come up: did the control plane accept this,
+    and who was it.
+
+    Put "audit" back before this holds anything you would need to investigate
+    after the fact. It is a real security signal, not padding.
+  EOT
+  type        = list(string)
+  default     = ["api", "authenticator"]
 }
 
 variable "public_access_cidrs" {
