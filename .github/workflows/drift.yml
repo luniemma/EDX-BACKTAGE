@@ -1,0 +1,250 @@
+name: drift
+
+# Reports infrastructure that no longer matches what is committed.
+#
+# Applying is dispatch-only (see platform.yml), which means nothing converges
+# the stack on a schedule and drift can sit unnoticed indefinitely. This is the
+# other half of that trade: nothing changes anything automatically, but a
+# divergence gets surfaced within a day.
+#
+# Read-only throughout. It runs under the PLAN role, never the apply role, and
+# every terraform invocation uses -lock=false so it cannot block a real apply
+# that happens to be running.
+#
+# Drift here is not hypothetical. Every one of these has actually happened:
+#
+#   * `aws eks create-access-entry` run by hand to restore cluster admin after
+#     a CI apply revoked it — reverted by the next apply
+#   * a Secret created with kubectl that exists in no manifest
+#   * an EBS volume and an IAM role deleted by hand after a teardown left them
+#     orphaned
+
+on:
+  schedule:
+    # 06:00 UTC daily — before the working day in Europe, after any overnight
+    # automation has settled.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # Shares platform.yml's group so a drift check never overlaps an apply. It
+  # is read-only, but a plan mid-apply reports garbage.
+  group: platform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+env:
+  TF_VERSION: "1.14.7"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+  CLUSTER_NAME: edx-rhdh
+
+jobs:
+  terraform:
+    name: terraform drift (${{ matrix.root }})
+    if: vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [platform, platform-db, platform-addons]
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Nothing deployed is not drift. With empty state and a config that
+      # describes a cluster, `plan` reports 51 resources to add — which would
+      # be a drift alarm every single morning after a teardown. Check whether
+      # the stack exists at all before deciding anything is wrong.
+      - name: Is the stack deployed?
+        id: deployed
+        run: |
+          if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${CLUSTER_NAME} is not deployed — nothing to compare against"
+          fi
+
+      - name: Init
+        if: steps.deployed.outputs.yes == 'true'
+        run: terraform init -input=false
+
+      # -detailed-exitcode is what makes this a check rather than a report:
+      #   0  no changes        — reality matches the configuration
+      #   1  error             — the check itself is broken, fail loudly
+      #   2  changes present   — drift, or an unapplied commit on main
+      #
+      # -lock=false because this must never queue behind or block a real apply.
+      - name: Plan
+        id: plan
+        if: steps.deployed.outputs.yes == 'true'
+        run: |
+          set +e
+          terraform plan -input=false -lock=false -no-color -detailed-exitcode > plan.txt 2>&1
+          code=$?
+          set -e
+
+          case "${code}" in
+            0)
+              echo "no drift in ${{ matrix.root }}"
+              ;;
+            2)
+              # Fail the job. A matrix does not propagate job outputs
+              # reliably — `needs.<job>.outputs.x` is whichever leg finished
+              # last — so the job result is the only signal the report job can
+              # trust, and drift is a result worth failing on anyway.
+              echo "::error::${{ matrix.root }} has drifted from what is committed"
+              grep -E "^  # |^Plan:" plan.txt | head -40 || true
+              exit 1
+              ;;
+            *)
+              echo "::error::terraform plan failed in ${{ matrix.root }}"
+              tail -30 plan.txt
+              exit 1
+              ;;
+          esac
+
+      - name: Upload plan
+        if: always() && steps.deployed.outputs.yes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-plan-${{ matrix.root }}
+          path: terraform/${{ matrix.root }}/plan.txt
+          retention-days: 7
+
+  # Terraform cannot see inside the cluster. ArgoCD self-heals what it owns, so
+  # an Application that is still OutOfSync after its retry budget means
+  # something it cannot reconcile — a manually edited object, or a manifest
+  # that does not apply cleanly.
+  kubernetes:
+    name: kubernetes drift
+    if: vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check ArgoCD sync state
+        run: |
+          set -euo pipefail
+          if ! aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+            echo "::notice::${CLUSTER_NAME} is not deployed — skipping"
+            exit 0
+          fi
+          aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}"
+
+          status=0
+
+          apps=$(kubectl -n argocd get applications.argoproj.io \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.sync.status}{"\t"}{.status.health.status}{"\n"}{end}' 2>/dev/null || true)
+
+          if [ -z "${apps}" ]; then
+            echo "::warning::no ArgoCD Applications found — the cluster is up but nothing is being delivered to it"
+          else
+            printf 'application\tsync\thealth\n%s\n' "${apps}"
+            while IFS=$'\t' read -r name sync health; do
+              [ -n "${name}" ] || continue
+              if [ "${sync}" != "Synced" ]; then
+                echo "::warning::${name} is ${sync} — ArgoCD could not reconcile it to the committed manifests"
+                status=1
+              fi
+              if [ "${health}" != "Healthy" ]; then
+                echo "::warning::${name} is ${health}"
+                status=1
+              fi
+            done <<< "${apps}"
+          fi
+
+          # Objects ArgoCD owns but that were changed outside git are reported
+          # as the Application being OutOfSync above. This catches the other
+          # direction: things running in the app namespaces that no
+          # Application claims at all.
+          orphans=$(kubectl get deploy,statefulset -n rhdh-lean \
+            -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\t"}{.metadata.labels.app\.kubernetes\.io/instance}{"\n"}{end}' 2>/dev/null || true)
+          while IFS=$'\t' read -r obj owner; do
+            [ -n "${obj}" ] || continue
+            if [ -z "${owner}" ]; then
+              echo "::warning::${obj} in rhdh-lean is not owned by any ArgoCD Application"
+              status=1
+            fi
+          done <<< "${orphans}"
+
+          exit "${status}"
+
+  report:
+    name: report
+    needs: [terraform, kubernetes]
+    if: always() && (needs.terraform.result == 'failure' || needs.kubernetes.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      # One open issue, updated — not a new issue every morning, which is how
+      # a drift check gets muted.
+      - name: Open or update the drift issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Infrastructure drift detected';
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Drift was detected on ${new Date().toISOString().slice(0, 10)}.`,
+              '',
+              `[Run details](${url}) — the per-root plans are attached as artifacts.`,
+              '',
+              'Either the infrastructure was changed outside Terraform, or main',
+              'contains a commit that has not been applied. Applying is',
+              'dispatch-only, so an unapplied merge shows up here rather than',
+              'converging on its own:',
+              '',
+              '```',
+              'gh workflow run platform.yml --ref main -f root=both',
+              '```',
+              '',
+              'If the change was made by hand and should be kept, put it in the',
+              'configuration — a manual change survives only until the next apply.',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'drift',
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['drift'],
+              });
+            }

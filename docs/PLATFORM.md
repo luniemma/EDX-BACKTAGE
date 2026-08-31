@@ -378,6 +378,60 @@ one.
 
 ---
 
+## Drift
+
+Applying is dispatch-only, so nothing converges the stack on a schedule and a
+divergence can sit unnoticed. `drift.yml` is the other half of that trade: it
+changes nothing, but surfaces a difference within a day.
+
+Runs daily at 06:00 UTC, read-only, under the **plan** role. Every Terraform
+call uses `-lock=false` so it can never block a real apply.
+
+| Check | What it catches |
+| --- | --- |
+| `terraform plan -detailed-exitcode` on all three roots | Anything changed outside Terraform, or a merged commit nobody applied |
+| ArgoCD Application sync and health | Objects edited in the cluster that ArgoCD cannot reconcile back |
+| Unowned workloads in `rhdh-lean` | Things running that no Application claims |
+
+Findings go to a **single issue labelled `drift`**, commented on rather than
+reopened — a check that files a new issue every morning gets muted within a
+week.
+
+"Not deployed" is not drift. With empty state and a config describing a
+cluster, `plan` reports 51 resources to add, which would alarm every day after
+a teardown. Each job checks whether the cluster exists first and skips if it
+does not.
+
+### Preventing it
+
+- **`cluster_admin_principals`** — list the identities that must keep
+  `kubectl` access. Without it, admin follows whoever ran the last apply and
+  the previous holder is silently revoked. Restoring by hand is itself drift.
+- **ArgoCD `selfHeal`** — already on. Objects it owns are reverted to what git
+  says, so most in-cluster drift corrects itself and only the irreconcilable
+  reaches the report.
+- **`deletion_protection`** on RDS, for anything holding data worth keeping.
+  Deliberately not `prevent_destroy`: that blocks `terraform destroy` too, and
+  cannot be driven by a variable, so it would have to be hand-edited for every
+  teardown — which is how a guard becomes something people routinely switch
+  off.
+
+### When it fires
+
+Decide which of two things happened.
+
+**Someone changed infrastructure by hand.** Put the change in the
+configuration, or revert it. A manual change survives only until the next
+apply, so leaving it is choosing to lose it at an unpredictable moment.
+
+**A merge was never applied.** Apply it:
+
+```bash
+gh workflow run platform.yml --ref main -f root=both
+```
+
+---
+
 ## Cost
 
 **~$130/month** at us-east-1 list prices, before data transfer.

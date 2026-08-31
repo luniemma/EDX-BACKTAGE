@@ -130,5 +130,17 @@ resource "aws_db_instance" "this" {
     # timestamp() changes on every plan, so without this the instance shows a
     # perpetual diff and would be replaced on any apply.
     ignore_changes = [final_snapshot_identifier]
+
+    # Deliberately no prevent_destroy. It reads like the obvious guard here and
+    # is the wrong one: it blocks `terraform destroy` as well as replacement,
+    # so the destroy workflow's database job would fail on it, and lifecycle
+    # arguments cannot be driven by a variable — it would have to be edited by
+    # hand for every teardown, which is how a guard becomes something people
+    # routinely switch off.
+    #
+    # var.deletion_protection does the same job on the AWS side, can be flipped
+    # per environment, and is what the README tells you to turn on. Unwanted
+    # replacement is caught by the daily drift check instead, which reports a
+    # plan that is not empty.
   }
 }

@@ -89,7 +89,33 @@ module "eks" {
   # Grants the identity running this apply cluster-admin via an access entry,
   # so the addons root can authenticate immediately afterwards without a
   # separate aws-auth ConfigMap dance.
+  #
+  # It is also a drift generator, which is why var.cluster_admin_principals
+  # exists below. "Cluster creator" is resolved at apply time from whoever is
+  # running Terraform, so the entry moves: apply locally and it is your user,
+  # apply from CI and it becomes edx-rhdh-tf-apply, and the previous holder
+  # silently loses access. That happened here — a CI apply from main revoked a
+  # developer's access mid-session and kubectl started returning Unauthorized
+  # with nothing in the diff to explain it.
   enable_cluster_creator_admin_permissions = true
+
+  # Admin that does NOT depend on who ran the last apply. Anything listed here
+  # keeps cluster-admin no matter which identity applies, so restoring access
+  # by hand — which is itself drift the next apply reverts — stops being
+  # necessary.
+  access_entries = {
+    for arn in var.cluster_admin_principals : trimprefix(
+      replace(arn, ":", "-"), "arn-aws-iam--"
+      ) => {
+      principal_arn = arn
+      policy_associations = {
+        admin = {
+          policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = { type = "cluster" }
+        }
+      }
+    }
+  }
 
   # Control plane logs go to CloudWatch and are billed twice over: once on
   # ingestion, then again on storage for as long as they are retained. The
