@@ -36,6 +36,7 @@ on:
         options:
           - addons-only
           - everything
+          - everything-including-database
       confirm:
         description: "Type: destroy edx-rhdh"
         required: true
@@ -222,10 +223,59 @@ jobs:
             --query 'LoadBalancers[].[LoadBalancerName,DNSName]' --output text
           exit 1
 
+  # Between the add-ons and the cluster, and deliberately opt-in. The database
+  # holds the only state in this stack worth keeping, and it lives in its own
+  # root precisely so a routine cluster teardown does NOT take it. Destroying
+  # it requires asking for it by name.
+  #
+  # It must still go before the cluster root when it goes at all: the instance
+  # sits in the VPC's private subnets and its security group references the
+  # node security group, so destroying the VPC first fails on dependencies.
+  database:
+    name: destroy database
+    needs: addons
+    if: inputs.scope == 'everything-including-database'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform/platform-db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init -input=false
+
+      # skip_final_snapshot is false, so this leaves a restorable snapshot
+      # behind. That snapshot bills until someone deletes it, which is the
+      # correct trade for the only stateful thing here.
+      - name: Destroy
+        run: terraform destroy -input=false -auto-approve
+
+      - name: Snapshot left behind
+        run: |
+          aws rds describe-db-snapshots --region "${AWS_REGION}"             --snapshot-type manual             --query 'DBSnapshots[].[DBSnapshotIdentifier,Status,SnapshotCreateTime]'             --output text || true
+
   cluster:
     name: destroy cluster and VPC
-    needs: addons
-    if: inputs.scope == 'everything'
+    needs: [addons, database]
+    if: >-
+      always() &&
+      needs.addons.result == 'success' &&
+      needs.database.result != 'failure' &&
+      needs.database.result != 'cancelled' &&
+      (inputs.scope == 'everything' || inputs.scope == 'everything-including-database')
     runs-on: ubuntu-latest
     defaults:
       run:

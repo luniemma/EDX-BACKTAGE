@@ -33,6 +33,8 @@ locals {
     "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform/terraform.tfstate.tflock",
     "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-addons/terraform.tfstate",
     "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-addons/terraform.tfstate.tflock",
+    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-db/terraform.tfstate",
+    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-db/terraform.tfstate.tflock",
   ]
 
   platform_managed_iam = [
@@ -199,6 +201,52 @@ data "aws_iam_policy_document" "platform_apply" {
     resources = ["*"]
   }
 
+  # The database. Region-scoped like the rest: you cannot name an instance
+  # that does not exist yet, so the region is the boundary.
+  statement {
+    sid    = "ManageDatabase"
+    effect = "Allow"
+    actions = [
+      "rds:*",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.aws_region]
+    }
+  }
+
+  # manage_master_user_password has RDS create and rotate the master password
+  # in Secrets Manager on the caller's behalf, so the caller needs to be able
+  # to create that secret and the service-linked role RDS uses to rotate it.
+  statement {
+    sid    = "ManageDatabaseSecret"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:ListSecrets",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:RotateSecret",
+      "secretsmanager:TagResource",
+      "secretsmanager:UntagResource",
+      "secretsmanager:UpdateSecret",
+      "kms:Decrypt",
+      "kms:GenerateDataKey",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.aws_region]
+    }
+  }
+
   # Same public SSM parameters the plan role needs; the node group resolves its
   # AMI release version on apply too. This only worked from a developer
   # machine because that identity is broadly privileged.
@@ -281,6 +329,12 @@ data "aws_iam_policy_document" "platform_plan" {
       "logs:ListTagsForResource",
       "iam:Get*",
       "iam:List*",
+      # platform-db refreshes the instance, its subnet group and its security
+      # group on every plan.
+      "rds:Describe*",
+      "rds:ListTagsForResource",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:ListSecrets",
     ]
     resources = ["*"]
   }
