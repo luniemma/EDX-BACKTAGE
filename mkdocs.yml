@@ -12,6 +12,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Platform guide: PLATFORM.md
   - Enterprise setup: ENTERPRISE-SETUP.md
   - Enterprise roadmap: ENTERPRISE-ROADMAP.md
   - Xeta deployment: XETA-DEPLOYMENT.md
