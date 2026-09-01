@@ -20,7 +20,7 @@ jobs:
     name: helm lint + template
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: azure/setup-helm@v4
         with:
@@ -107,7 +107,7 @@ jobs:
     name: catalog + template entities
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Every catalog entity is now fetched over HTTP by the running portal
       # instead of being baked into an image, so a broken path fails at ingest

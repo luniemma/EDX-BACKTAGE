@@ -48,7 +48,7 @@ jobs:
           echo "namespace: $(cat "$NS_FILE")"
           echo "api server: ${KUBERNETES_SERVICE_HOST}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Report the toolchain
         run: |
