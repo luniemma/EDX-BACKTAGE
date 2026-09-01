@@ -71,7 +71,7 @@ jobs:
         run: terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
 
       - name: Comment plan on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PLAN_PATH: terraform/plan.txt
         with:
