@@ -65,6 +65,20 @@ jobs:
   trivy-config:
     name: Trivy config (rendered manifests + IaC)
     runs-on: ubuntu-latest
+    env:
+      # Every Terraform root takes its values from a committed terraform.tfvars
+      # and its variables carry no defaults, but Trivy does not load tfvars on
+      # its own. Without these files every variable is unknown to the scanner,
+      # which is how AWS-0031 fired on the ECR repository's
+      # image_tag_mutability even though tfvars sets it to IMMUTABLE.
+      #
+      # One scan given every file, rather than one scan per root, keeps SARIF
+      # paths repo-relative. Checked locally: it reports the same findings for
+      # each root as scanning that root alone with only its own file. A name
+      # set in more than one file takes a single value; today that is only
+      # `project`, which feeds tags. Add a new root's tfvars here.
+      TF_VARS_FILES: >-
+        terraform/terraform.tfvars,terraform/platform/terraform.tfvars,terraform/platform-db/terraform.tfvars,terraform/platform-addons/terraform.tfvars,terraform/platform-dns/terraform.tfvars
     steps:
       - uses: actions/checkout@v4
 
@@ -94,6 +108,7 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
           skip-dirs: .terraform
           trivyignores: .trivyignore
+          tf-vars: ${{ env.TF_VARS_FILES }}
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -109,6 +124,7 @@ jobs:
           exit-code: 1
           skip-dirs: .terraform
           trivyignores: .trivyignore
+          tf-vars: ${{ env.TF_VARS_FILES }}
 
   gitleaks:
     name: Gitleaks (secret scanning)
