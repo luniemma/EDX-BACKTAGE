@@ -38,7 +38,7 @@ on:
           - everything
           - everything-including-database
       confirm:
-        description: "Type: destroy edx-rhdh"
+        description: "Type: destroy <cluster name> (name in terraform/platform/terraform.tfvars)"
         required: true
         type: string
       destroy_dns_zone:
@@ -62,7 +62,8 @@ env:
   TF_VERSION: "1.14.7"
   AWS_REGION: ${{ vars.AWS_REGION }}
   TF_IN_AUTOMATION: "true"
-  CLUSTER_NAME: edx-rhdh
+  # No CLUSTER_NAME here: jobs that need it read it from
+  # terraform/platform/terraform.tfvars via ./.github/actions/cluster-name.
 
 jobs:
   # A separate job so the confirmation is checked before any AWS credentials
@@ -72,6 +73,10 @@ jobs:
     name: confirm
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/cluster-name
+
       - name: Check the confirmation phrase
         run: |
           set -euo pipefail
@@ -100,6 +105,10 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/cluster-name
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -206,7 +215,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # Removing the ingress-nginx release deletes the Service, which is what
       # actually deletes the NLB. Everything after this depends on that having
@@ -260,7 +269,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # skip_final_snapshot is false, so this leaves a restorable snapshot
       # behind. That snapshot bills until someone deletes it, which is the
@@ -301,7 +310,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # Targeted, NOT a bare `terraform destroy`. An untargeted destroy would
       # include aws_iam_role.platform_apply — the role this step is currently
@@ -317,6 +326,8 @@ jobs:
             -target=module.eks \
             -target=module.vpc
 
+      - uses: ./.github/actions/cluster-name
+
       - name: Report what is left
         run: |
           set -euo pipefail
@@ -326,7 +337,7 @@ jobs:
           aws ec2 describe-vpcs --region "${AWS_REGION}" \
             --query 'Vpcs[?IsDefault==`false`].VpcId' --output text || true
           echo
-          echo "The edx-rhdh-tf-plan and edx-rhdh-tf-apply roles are intentionally kept:"
+          echo "The ${CLUSTER_NAME}-tf-plan and ${CLUSTER_NAME}-tf-apply roles are intentionally kept:"
           echo "they cost nothing, and destroying them would remove the credentials"
           echo "this job runs under. Delete them by hand if you are retiring the stack."
 
@@ -368,7 +379,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # Report what is still in the zone before trying. If external-dns left
       # anything behind, the destroy below fails and this output is what tells

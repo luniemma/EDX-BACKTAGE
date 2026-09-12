@@ -1,0 +1,21 @@
+name: cluster name
+description: >-
+  Exports CLUSTER_NAME, read from terraform/platform/terraform.tfvars, so the
+  workflows address the cluster by the name Terraform created it with instead
+  of repeating it. The repository must be checked out first.
+
+runs:
+  using: composite
+  steps:
+    - name: Read name from terraform/platform/terraform.tfvars
+      shell: bash
+      run: |
+        set -euo pipefail
+        tfvars="${GITHUB_WORKSPACE}/terraform/platform/terraform.tfvars"
+        name=$(tr -d '\r' < "${tfvars}" | sed -nE 's/^name[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p')
+        if [ -z "${name}" ]; then
+          echo "::error::no name = \"...\" line in terraform/platform/terraform.tfvars"
+          exit 1
+        fi
+        echo "CLUSTER_NAME=${name}" >> "${GITHUB_ENV}"
+        echo "cluster name: ${name}"

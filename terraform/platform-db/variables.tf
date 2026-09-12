@@ -1,13 +1,16 @@
+# Nothing here carries a value. Every variable is set in terraform.tfvars,
+# committed next to this file, so what this deployment runs is visible in one
+# place rather than scattered across defaults. The descriptions explain the
+# values chosen there.
+
 variable "project" {
   description = "Tag applied to everything this root creates."
   type        = string
-  default     = "edx-backtage"
 }
 
 variable "name" {
   description = "Name prefix. Matches the platform root so the two read as one stack."
   type        = string
-  default     = "edx-rhdh"
 }
 
 variable "engine_version" {
@@ -28,7 +31,6 @@ variable "engine_version" {
     ran, so the RHDH schema behaves identically.
   EOT
   type        = string
-  default     = "15"
 
   validation {
     condition     = can(regex("^[0-9]+$", var.engine_version))
@@ -44,13 +46,11 @@ variable "instance_class" {
     migrations rather than sustained throughput.
   EOT
   type        = string
-  default     = "db.t4g.micro"
 }
 
 variable "allocated_storage" {
   description = "GiB. Below 20 RDS refuses to create a gp3 volume."
   type        = number
-  default     = 20
 
   validation {
     condition     = var.allocated_storage >= 20
@@ -65,7 +65,6 @@ variable "backup_retention_days" {
     retention that survives a bad week rather than a bad afternoon.
   EOT
   type        = number
-  default     = 7
 
   validation {
     condition     = var.backup_retention_days >= 1
@@ -75,32 +74,107 @@ variable "backup_retention_days" {
 
 variable "multi_az" {
   description = <<-EOT
-    Off by default: Multi-AZ doubles the instance cost for a standby this
+    Off: Multi-AZ doubles the instance cost for a standby this
     profile does not justify. Turn it on before anything depends on the
     portal being available during an AZ failure.
   EOT
   type        = bool
-  default     = false
 }
 
 variable "deletion_protection" {
   description = <<-EOT
-    Off by default so `terraform destroy` works without a two-step dance,
+    Off so `terraform destroy` works without a two-step dance,
     which suits an evaluation stack. Turn it on the moment the catalog holds
     anything anyone would miss.
   EOT
   type        = bool
-  default     = false
 }
 
 variable "db_name" {
   description = "Initial database. RHDH creates its own per-plugin databases alongside it."
   type        = string
-  default     = "backstage"
 }
 
 variable "db_username" {
   description = "Master user. values-lean.yaml must name the same user."
   type        = string
-  default     = "backstage"
+}
+
+variable "tfstate_bucket" {
+  description = <<-EOT
+    Bucket holding the platform root's state, read for the VPC, subnets and
+    node security group. Must match bucket in ../state.s3.tfbackend.
+  EOT
+  type        = string
+}
+
+variable "tfstate_region" {
+  description = "Region of tfstate_bucket. Must match region in ../state.s3.tfbackend."
+  type        = string
+}
+
+variable "platform_tfstate_key" {
+  description = "State key of the platform root, read for its outputs. Must match the key in ../platform/versions.tf."
+  type        = string
+}
+
+variable "db_port" {
+  description = "Port PostgreSQL listens on. The security group opens exactly this port, to the nodes only."
+  type        = number
+}
+
+variable "max_allocated_storage" {
+  description = <<-EOT
+    GiB. Ceiling for RDS storage autoscaling, which grows the volume without
+    downtime when it runs low. Must be at least allocated_storage.
+  EOT
+  type        = number
+
+  validation {
+    condition     = var.max_allocated_storage >= var.allocated_storage
+    error_message = "max_allocated_storage must be at least allocated_storage."
+  }
+}
+
+variable "storage_type" {
+  description = "EBS volume type for the instance."
+  type        = string
+}
+
+variable "backup_window" {
+  description = "Daily automated-backup window, UTC, e.g. \"07:00-08:00\". Must not overlap maintenance_window."
+  type        = string
+}
+
+variable "maintenance_window" {
+  description = "Weekly maintenance window, UTC, e.g. \"Mon:08:30-Mon:09:30\"."
+  type        = string
+}
+
+variable "apply_immediately" {
+  description = "false rolls modifications into maintenance_window instead of applying them at once."
+  type        = bool
+}
+
+variable "cloudwatch_logs_exports" {
+  description = <<-EOT
+    Log types exported to CloudWatch. `upgrade` is not a valid export type for
+    this engine, and RDS rejects the whole create if it is listed.
+  EOT
+  type        = list(string)
+}
+
+variable "performance_insights_enabled" {
+  description = "Performance Insights. Not free on burstable instance classes."
+  type        = bool
+}
+
+variable "rhdh_namespace" {
+  description = "Namespace RHDH runs in, where kubernetes_secret_command writes the password."
+  type        = string
+}
+
+variable "rhdh_db_secret_name" {
+  description = "Secret kubernetes_secret_command writes the password into. The RHDH chart values must read the same one."
+  type        = string
 }

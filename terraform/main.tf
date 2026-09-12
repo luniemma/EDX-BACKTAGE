@@ -47,10 +47,10 @@ resource "aws_ecr_lifecycle_policy" "this" {
       },
       {
         rulePriority = 2
-        description  = "Keep last ${var.keep_last_release_images} release (v*) images"
+        description  = "Keep last ${var.keep_last_release_images} release (${join(", ", var.release_image_tag_patterns)}) images"
         selection = {
           tagStatus      = "tagged"
-          tagPatternList = ["v*"]
+          tagPatternList = var.release_image_tag_patterns
           countType      = "imageCountMoreThan"
           countNumber    = var.keep_last_release_images
         }
@@ -58,10 +58,10 @@ resource "aws_ecr_lifecycle_policy" "this" {
       },
       {
         rulePriority = 3
-        description  = "Keep last ${var.keep_last_sha_images} dev sha-* images"
+        description  = "Keep last ${var.keep_last_sha_images} dev ${join(", ", var.dev_image_tag_patterns)} images"
         selection = {
           tagStatus      = "tagged"
-          tagPatternList = ["sha-*"]
+          tagPatternList = var.dev_image_tag_patterns
           countType      = "imageCountMoreThan"
           countNumber    = var.keep_last_sha_images
         }

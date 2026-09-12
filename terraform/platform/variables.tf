@@ -1,35 +1,59 @@
+# Nothing here carries a value. Every variable is set in terraform.tfvars,
+# committed next to this file, so what this deployment runs is visible in one
+# place rather than scattered across defaults. The descriptions explain the
+# values chosen there. Only optional collections that stay empty unless
+# populated keep a default.
+
 variable "aws_region" {
   description = "Region for the platform."
   type        = string
-  default     = "us-east-1"
 }
 
 variable "project" {
   description = "Tag applied to everything this root creates."
   type        = string
-  default     = "edx-backtage"
 }
 
 variable "name" {
-  description = "Name prefix for the cluster and its networking."
+  description = <<-EOT
+    Name prefix for the cluster and its networking, and the prefix the CI
+    roles' IAM permissions are scoped to.
+
+    The workflows take the cluster name from terraform.tfvars too (see
+    .github/actions/cluster-name), so it is set in exactly one place.
+  EOT
   type        = string
-  default     = "edx-rhdh"
 }
 
 variable "vpc_cidr" {
-  description = "CIDR for the platform VPC. Not the default VPC — this root builds its own."
+  description = <<-EOT
+    CIDR for the platform VPC. Not the default VPC — this root builds its own.
+
+    No default, because the right range depends on what else is routed in the
+    account — peering, VPN, other VPCs — and an overlap stays silent until
+    something tries to connect. Subnets are carved from it subnet_newbits
+    smaller, public from index 0 and private from private_subnet_offset; the
+    validation below checks that they fit and are no smaller than /28.
+  EOT
   type        = string
-  default     = "10.42.0.0/16"
+
+  validation {
+    condition = can(cidrnetmask(var.vpc_cidr)) && try(
+      tonumber(split("/", var.vpc_cidr)[1]) + var.subnet_newbits <= 28 &&
+      var.private_subnet_offset + var.az_count <= pow(2, var.subnet_newbits),
+      false
+    )
+    error_message = "vpc_cidr must be IPv4 and hold private_subnet_offset + az_count subnets of subnet_newbits smaller, each /28 or larger."
+  }
 }
 
 variable "az_count" {
   description = <<-EOT
     Number of availability zones. EKS requires subnets in at least two, so two
-    is the floor as well as the default. Raising this adds subnets, not cost:
+    is the floor. Raising this adds subnets, not cost:
     there are no NAT gateways in this profile.
   EOT
   type        = number
-  default     = 2
 
   validation {
     condition     = var.az_count >= 2
@@ -40,7 +64,6 @@ variable "az_count" {
 variable "kubernetes_version" {
   description = "EKS control plane version."
   type        = string
-  default     = "1.31"
 }
 
 variable "node_instance_types" {
@@ -51,25 +74,21 @@ variable "node_instance_types" {
     cluster.
   EOT
   type        = list(string)
-  default     = ["t3.medium", "t3a.medium", "t2.medium"]
 }
 
 variable "node_desired_size" {
   description = "Nodes to run. Two fits RHDH plus ArgoCD plus ingress-nginx with headroom."
   type        = number
-  default     = 2
 }
 
 variable "node_min_size" {
   description = "Lower bound for the node group."
   type        = number
-  default     = 2
 }
 
 variable "node_max_size" {
   description = "Upper bound. Kept low on purpose: this profile has a cost ceiling."
   type        = number
-  default     = 4
 }
 
 variable "node_disk_size" {
@@ -86,7 +105,6 @@ variable "node_disk_size" {
     the pod under it.
   EOT
   type        = number
-  default     = 30
 
   validation {
     condition     = var.node_disk_size >= 25
@@ -133,36 +151,37 @@ variable "enabled_cluster_log_types" {
     after the fact. It is a real security signal, not padding.
   EOT
   type        = list(string)
-  default     = ["api", "authenticator"]
 }
 
 variable "public_access_cidrs" {
   description = <<-EOT
-    Who may reach the Kubernetes API. Defaults to the whole internet because
+    Who may reach the Kubernetes API. Set to the whole internet because
     this profile has no NAT gateway and no bastion, so there is no private path
     in. Narrow it to your egress IP if you have a stable one — it is the single
     highest-value hardening step available in this profile.
   EOT
   type        = list(string)
-  default     = ["0.0.0.0/0"]
 }
 
 variable "tfstate_bucket" {
-  description = "Bucket holding this root's state. Must match the backend block in versions.tf."
+  description = <<-EOT
+    Bucket holding the platform roots' state, which the CI roles are granted
+    access to.
+
+    Must match bucket in ../state.s3.tfbackend. Terraform does not read
+    variables into backend configuration, so the two are kept in step by hand.
+  EOT
   type        = string
-  default     = "edx-backtage-tfstate-724772096574"
 }
 
 variable "github_owner" {
   description = "GitHub org/user, for the OIDC trust policy."
   type        = string
-  default     = "luniemma"
 }
 
 variable "github_repo" {
   description = "GitHub repository, for the OIDC trust policy."
   type        = string
-  default     = "EDX-BACKTAGE"
 }
 
 variable "terraform_apply_branches" {
@@ -172,11 +191,71 @@ variable "terraform_apply_branches" {
     cluster.
   EOT
   type        = list(string)
-  default     = ["main"]
 }
 
 variable "extra_tags" {
   description = "Additional tags merged into the provider default_tags."
   type        = map(string)
   default     = {}
+}
+
+variable "subnet_newbits" {
+  description = <<-EOT
+    How much smaller than vpc_cidr each subnet is, in prefix bits: 4 turns a
+    /16 into /20s, 4091 usable addresses each. The VPC CNI hands a VPC address
+    to every pod, so subnets need to be generous relative to pod count, not
+    node count.
+  EOT
+  type        = number
+}
+
+variable "private_subnet_offset" {
+  description = <<-EOT
+    Subnet index the private subnets start at, so public and private never
+    collide as az_count grows.
+  EOT
+  type        = number
+
+  validation {
+    condition     = var.private_subnet_offset >= var.az_count
+    error_message = "private_subnet_offset must be at least az_count, or public and private subnets overlap."
+  }
+}
+
+variable "cluster_log_retention_days" {
+  description = "Days CloudWatch keeps the control-plane logs listed in enabled_cluster_log_types."
+  type        = number
+}
+
+variable "node_capacity_type" {
+  description = <<-EOT
+    SPOT or ON_DEMAND. Spot is roughly $40/month cheaper for this node group,
+    and nodes get reclaimed: RHDH is a stateless Deployment and ArgoCD
+    re-places what gets evicted, which is what makes that survivable.
+  EOT
+  type        = string
+
+  validation {
+    condition     = contains(["SPOT", "ON_DEMAND"], var.node_capacity_type)
+    error_message = "node_capacity_type must be SPOT or ON_DEMAND."
+  }
+}
+
+variable "node_volume_type" {
+  description = "EBS volume type for node root volumes."
+  type        = string
+}
+
+variable "node_labels" {
+  description = "Kubernetes labels applied to every node in the group."
+  type        = map(string)
+}
+
+variable "platform_tfstate_keys" {
+  description = <<-EOT
+    State keys of the platform, platform-addons and platform-db roots. The CI
+    roles are granted these objects and their lock files, and nothing else in
+    the bucket. Each must match the key in that root's versions.tf.
+  EOT
+  type        = list(string)
 }

@@ -14,9 +14,9 @@ data "terraform_remote_state" "dns" {
   backend = "s3"
 
   config = {
-    bucket = "edx-backtage-tfstate-724772096574"
-    key    = "edx/platform-dns/terraform.tfstate"
-    region = "us-east-1"
+    bucket = var.tfstate_bucket
+    key    = var.dns_tfstate_key
+    region = var.tfstate_region
   }
 }
 
@@ -47,7 +47,7 @@ data "aws_iam_policy_document" "external_dns_assume" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["system:serviceaccount:external-dns:external-dns"]
+      values   = ["system:serviceaccount:${var.external_dns_namespace}:external-dns"]
     }
 
     condition {
@@ -107,14 +107,14 @@ resource "helm_release" "external_dns" {
   count = local.dns_ready ? 1 : 0
 
   name             = "external-dns"
-  repository       = "https://kubernetes-sigs.github.io/external-dns"
+  repository       = var.external_dns_chart_repository
   chart            = "external-dns"
   version          = var.external_dns_version
-  namespace        = "external-dns"
+  namespace        = var.external_dns_namespace
   create_namespace = true
 
   wait    = true
-  timeout = 600
+  timeout = var.dns_addons_helm_timeout_seconds
 
   values = [yamlencode({
     provider = { name = "aws" }
@@ -145,10 +145,7 @@ resource "helm_release" "external_dns" {
 
     sources = ["ingress", "service"]
 
-    resources = {
-      requests = { cpu = "20m", memory = "64Mi" }
-      limits   = { memory = "128Mi" }
-    }
+    resources = var.external_dns_resources
   })]
 }
 
@@ -163,22 +160,19 @@ resource "helm_release" "cert_manager" {
   count = local.dns_ready ? 1 : 0
 
   name             = "cert-manager"
-  repository       = "https://charts.jetstack.io"
+  repository       = var.cert_manager_chart_repository
   chart            = "cert-manager"
   version          = var.cert_manager_version
-  namespace        = "cert-manager"
+  namespace        = var.cert_manager_namespace
   create_namespace = true
 
   wait    = true
-  timeout = 600
+  timeout = var.dns_addons_helm_timeout_seconds
 
   values = [yamlencode({
     crds = { enabled = true }
 
-    resources = {
-      requests = { cpu = "20m", memory = "64Mi" }
-      limits   = { memory = "192Mi" }
-    }
+    resources = var.cert_manager_resources
   })]
 }
 
@@ -193,14 +187,14 @@ resource "kubernetes_manifest" "letsencrypt_issuer" {
     kind       = "ClusterIssuer"
     metadata = {
       # values-prod.yaml already names this issuer, so the name is a contract.
-      name = "letsencrypt-prod"
+      name = var.cluster_issuer_name
     }
     spec = {
       acme = {
-        server = "https://acme-v02.api.letsencrypt.org/directory"
+        server = var.acme_server
         email  = var.acme_email
         privateKeySecretRef = {
-          name = "letsencrypt-prod-account-key"
+          name = "${var.cluster_issuer_name}-account-key"
         }
         solvers = [{
           http01 = {

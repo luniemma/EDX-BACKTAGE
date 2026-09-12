@@ -22,21 +22,25 @@ created by the configuration CI runs, so the first apply cannot come from CI.
                     └──────────────────────────────────────────┘
 ```
 
-Three Terraform roots, three state keys, applied in order. They are separate
+Four Terraform roots, four state keys, applied in order. They are separate
 because each has a different lifecycle and a different blast radius.
 
 | Root | Owns | State key |
 | --- | --- | --- |
-| `terraform/platform` | VPC, EKS 1.31, Spot node group, EBS CSI, CI roles | `edx/platform/…` |
+| `terraform/platform-dns` | Route53 hosted zone, only once `domain_name` is set | `edx/platform-dns/…` |
+| `terraform/platform` | VPC, EKS, Spot node group, EBS CSI, CI roles | `edx/platform/…` |
 | `terraform/platform-db` | RDS PostgreSQL, subnet group, security group | `edx/platform-db/…` |
-| `terraform/platform-addons` | ingress-nginx, ArgoCD, gp3 StorageClass | `edx/platform-addons/…` |
+| `terraform/platform-addons` | ingress-nginx, ArgoCD, gp3 StorageClass; external-dns and cert-manager once DNS is enabled | `edx/platform-addons/…` |
 
-**Why three and not one.** The addons' `kubernetes` and `helm` providers
+**Why not one.** The addons' `kubernetes` and `helm` providers
 authenticate against an endpoint that does not exist until the cluster is
 applied; configuring a provider from a resource created in the same apply
 breaks `plan` on clean state and makes `destroy` unreliable. The database is
 separate for a different reason: teardowns are routine, and a database sharing
-the cluster's state would be destroyed every time one ran.
+the cluster's state would be destroyed every time one ran. The DNS zone is
+separate for the strongest reason of all: re-creating it produces different
+nameservers, so recovering from its destruction means editing the registrar
+and waiting out propagation.
 
 **RHDH is deployed by ArgoCD, not Terraform.** Terraform's job stops at
 installing the thing that does continuous delivery. Giving the chart two
@@ -48,12 +52,17 @@ owners that both reconcile it produces a fight over the same objects.
 | --- | --- |
 | `terraform/platform/` | Cluster and networking. Has its own README. |
 | `terraform/platform-db/` | Database, plus the data-migration procedure. |
-| `terraform/platform-addons/` | Cluster-internal software. |
+| `terraform/platform-addons/` | Cluster-internal software, including DNS and TLS controllers. |
+| `terraform/platform-dns/` | The Route53 zone. Creates nothing until `domain_name` is set. |
+| `terraform/*/terraform.tfvars` | Every value each root deploys. See [Configuration](#configuration). |
+| `terraform/state.s3.tfbackend` | State bucket and region, shared by every root. |
 | `terraform/` | Unrelated: ECR and OIDC roles for the old `backend-api`. |
 | `deploy/helm/rhdh/` | The RHDH wrapper chart and its value profiles. |
 | `deploy/argocd/` | AppProject and Application manifests. |
-| `.github/workflows/platform.yml` | Plan on PR, apply on main, health verify. |
+| `.github/workflows/platform.yml` | Plan on PR, apply on dispatch, health verify. |
 | `.github/workflows/destroy.yml` | Ordered teardown, manual dispatch only. |
+| `.github/workflows/drift.yml` | Daily comparison of what is running against what is committed. |
+| `.github/actions/cluster-name/` | Reads the cluster name from `terraform/platform/terraform.tfvars` for the workflows. |
 
 ### Value profiles
 
@@ -63,6 +72,45 @@ owners that both reconcile it produces a fight over the same objects.
 | `values-lean.yaml` | **RDS** | none | this EKS platform |
 | `values-staging.yaml` | external | cert-manager | not provisioned |
 | `values-prod.yaml` | external | cert-manager | not provisioned |
+
+### Configuration
+
+Every value the platform runs with lives in a committed `terraform.tfvars`, one
+per root. No variable has a default — only optional collections that stay empty
+unless populated do — so a root's tfvars file is the whole description of what
+it deploys, and a value missing from it fails `plan` rather than silently
+falling back to something written somewhere else.
+
+| File | Holds |
+| --- | --- |
+| `terraform/state.s3.tfbackend` | State bucket and region, shared by every root. Each `versions.tf` keeps only its own key, so `init` always takes `-backend-config`. |
+| `terraform/platform/terraform.tfvars` | Region, `name`, VPC and subnet sizing, Kubernetes version, the node group, API access CIDRs, the CI branches and state keys. |
+| `terraform/platform-db/terraform.tfvars` | Instance class, engine major version, storage, backups and maintenance windows, port. |
+| `terraform/platform-addons/terraform.tfvars` | Chart versions and repositories, namespaces, replicas and resources, DNS and TLS settings. |
+| `terraform/platform-dns/terraform.tfvars` | `domain_name` — empty keeps the whole DNS and TLS path switched off. |
+
+**Changing a value** is an edit to the relevant tfvars in a pull request. The
+`platform` workflow posts the plan on the PR; after merge, apply it with
+`gh workflow run platform.yml --ref main -f root=<root>`.
+
+**Values that must agree across files.** Terraform cannot read variables into
+backend configuration, so a few values are repeated and kept in step by hand:
+
+- the bucket in `state.s3.tfbackend`, and `tfstate_bucket` in the platform,
+  platform-db and platform-addons tfvars (plus `terraform/terraform.tfvars`
+  for the ECR root); its region, and `tfstate_region` in platform-db and
+  platform-addons;
+- each root's state key in its `versions.tf`, and the matching entries in
+  `platform_tfstate_keys`, `platform_tfstate_key` and `dns_tfstate_key`;
+- `name`, in the platform, platform-db and platform-addons tfvars. The
+  workflows read the cluster name from `terraform/platform/terraform.tfvars`
+  through `.github/actions/cluster-name`, so they never repeat it.
+
+**What stays in code, deliberately:** anything Terraform will not take from a
+variable (module versions, the backend key, `lifecycle`), constants of the AWS
+and Kubernetes APIs, the security invariants — encryption on, nothing publicly
+accessible, a final database snapshot — and the shape of this profile: no NAT
+gateway, one shared NLB, the `gp3` StorageClass.
 
 ---
 
@@ -74,17 +122,20 @@ Needed once, on an account with no platform in it.
 
 - Terraform ≥ 1.11, AWS CLI v2, `kubectl`, `helm` 3.16+, `gh`
 - AWS credentials that can create IAM roles
-- The state bucket `edx-backtage-tfstate-724772096574` must already exist
-- Repository variable `AWS_REGION` set to `us-east-1`
+- The state bucket named in `terraform/state.s3.tfbackend` must already exist
+- Repository variable `AWS_REGION` set to the same region as `aws_region` in
+  `terraform/platform/terraform.tfvars`
+- Each root's `terraform.tfvars` reviewed — see [Configuration](#configuration)
 
 **The ordering problem.** `platform.yml` runs under `edx-rhdh-tf-apply`, and
 that role is created by `terraform/platform`. So the first apply has to run
 locally:
 
 ```bash
-terraform -chdir=terraform/platform        init && terraform -chdir=terraform/platform        apply
-terraform -chdir=terraform/platform-db     init && terraform -chdir=terraform/platform-db     apply
-terraform -chdir=terraform/platform-addons init && terraform -chdir=terraform/platform-addons apply
+terraform -chdir=terraform/platform-dns    init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform-dns    apply
+terraform -chdir=terraform/platform        init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform        apply
+terraform -chdir=terraform/platform-db     init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform-db     apply
+terraform -chdir=terraform/platform-addons init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform-addons apply
 ```
 
 Then publish both role ARNs so CI can take over:
@@ -527,10 +578,12 @@ than CIDR.
 | --- | --- |
 | `ci` | PR, push to main — chart renders, catalog entities |
 | `security` | PR, push, weekly — Trivy, Gitleaks |
-| `platform` | PR (plan), push to main (apply), dispatch |
+| `platform` | PR (plan); manual dispatch (apply) |
 | `destroy` | Manual dispatch only |
+| `drift` | Daily schedule and dispatch — Terraform and ArgoCD drift |
 | `terraform` | The ECR/OIDC root only |
 
-**Naming.** Everything the platform creates is prefixed `edx-rhdh-`, which is
+**Naming.** Everything the platform creates is prefixed with `name` from
+`terraform/platform/terraform.tfvars` (`edx-rhdh-`), which is
 what the CI roles' IAM scoping depends on. Anything new that IAM must manage
 has to follow it or CI will fail on that resource alone.

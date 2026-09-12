@@ -41,7 +41,8 @@ env:
   TF_VERSION: "1.14.7"
   AWS_REGION: ${{ vars.AWS_REGION }}
   TF_IN_AUTOMATION: "true"
-  CLUSTER_NAME: edx-rhdh
+  # No CLUSTER_NAME here: jobs that need it read it from
+  # terraform/platform/terraform.tfvars via ./.github/actions/cluster-name.
 
 jobs:
   terraform:
@@ -58,6 +59,8 @@ jobs:
         working-directory: terraform/${{ matrix.root }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/cluster-name
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -86,7 +89,7 @@ jobs:
 
       - name: Init
         if: steps.deployed.outputs.yes == 'true'
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # -detailed-exitcode is what makes this a check rather than a report:
       #   0  no changes        — reality matches the configuration
@@ -140,6 +143,10 @@ jobs:
     if: vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/cluster-name
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

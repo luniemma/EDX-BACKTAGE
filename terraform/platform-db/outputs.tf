@@ -38,7 +38,7 @@ output "kubernetes_secret_command" {
     aws_db_instance.this.master_user_secret[0].secret_arn,
     "--region ${local.region} --query SecretString --output text",
     "| python -c \"import sys,json;print(json.load(sys.stdin)['password'])\"",
-    "| xargs -I{} kubectl -n rhdh-lean create secret generic rhdh-db",
+    "| xargs -I{} kubectl -n ${var.rhdh_namespace} create secret generic ${var.rhdh_db_secret_name}",
     "--from-literal=postgres-password={}",
     "--dry-run=client -o yaml | kubectl apply -f -",
   ])

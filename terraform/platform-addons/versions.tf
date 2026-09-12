@@ -19,10 +19,13 @@ terraform {
   # Separate again from ../platform. Cluster-internal software changes far more
   # often than the cluster itself, and a bad addon apply should never be able
   # to touch the state that owns the VPC and the control plane.
+  #
+  # Partial configuration: bucket and region come from the file shared by every
+  # root under terraform/, so initialise with
+  #
+  #   terraform init -backend-config=../state.s3.tfbackend
   backend "s3" {
-    bucket       = "edx-backtage-tfstate-724772096574"
     key          = "edx/platform-addons/terraform.tfstate"
-    region       = "us-east-1"
     encrypt      = true
     use_lockfile = true
   }

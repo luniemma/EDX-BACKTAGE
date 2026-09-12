@@ -1,13 +1,15 @@
 # Platform — lean EKS
 
-The cluster RHDH runs on. Two Terraform roots, applied in order:
+The cluster RHDH runs on. Four Terraform roots, applied in order:
 
 | Root | Owns | State key |
 | --- | --- | --- |
-| `terraform/platform` | VPC, EKS control plane, Spot node group, EBS CSI, the CI apply role | `edx/platform/terraform.tfstate` |
-| `terraform/platform-addons` | ingress-nginx, ArgoCD, the `gp3` StorageClass | `edx/platform-addons/terraform.tfstate` |
+| `terraform/platform-dns` | Route53 hosted zone, only once `domain_name` is set | `edx/platform-dns/terraform.tfstate` |
+| `terraform/platform` | VPC, EKS control plane, Spot node group, EBS CSI, the CI roles | `edx/platform/terraform.tfstate` |
+| `terraform/platform-db` | RDS PostgreSQL — see its README | `edx/platform-db/terraform.tfstate` |
+| `terraform/platform-addons` | ingress-nginx, ArgoCD, the `gp3` StorageClass; external-dns and cert-manager once DNS is enabled | `edx/platform-addons/terraform.tfstate` |
 
-They are separate because the addons' `kubernetes` and `helm` providers
+The cluster and its add-ons are separate because the addons' `kubernetes` and `helm` providers
 authenticate against an endpoint that does not exist until the first root has
 been applied. Configuring a provider from a resource created in the same apply
 makes the provider config depend on an unknown value, which breaks `plan` on a
@@ -84,6 +86,15 @@ In priority order:
 
 ## Applying
 
+Every value the stack runs with is in each root's committed
+`terraform.tfvars`; the variable definitions carry no defaults. To change a
+value — node count, instance types, a chart version — edit that file in a pull
+request, review the plan the workflow posts, and apply after merge. The state
+bucket and its region are in `terraform/state.s3.tfbackend`, shared by every
+root, so `init` takes `-backend-config=../state.s3.tfbackend`. See
+[Configuration](../../docs/PLATFORM.md#configuration) for the values that must
+agree across files.
+
 Through Actions, which is the supported path:
 
 ```
@@ -97,8 +108,10 @@ configuration CI applies — so the **first** apply has to run locally under
 credentials that can create IAM roles:
 
 ```
-cd terraform/platform        && terraform init && terraform apply
-cd ../platform-addons        && terraform init && terraform apply
+cd terraform/platform-dns    && terraform init -backend-config=../state.s3.tfbackend && terraform apply
+cd ../platform               && terraform init -backend-config=../state.s3.tfbackend && terraform apply
+cd ../platform-db            && terraform init -backend-config=../state.s3.tfbackend && terraform apply
+cd ../platform-addons        && terraform init -backend-config=../state.s3.tfbackend && terraform apply
 ```
 
 then publish both ARNs and use the workflow from then on:

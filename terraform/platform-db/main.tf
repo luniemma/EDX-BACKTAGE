@@ -9,9 +9,9 @@ data "terraform_remote_state" "platform" {
   backend = "s3"
 
   config = {
-    bucket = "edx-backtage-tfstate-724772096574"
-    key    = "edx/platform/terraform.tfstate"
-    region = "us-east-1"
+    bucket = var.tfstate_bucket
+    key    = var.platform_tfstate_key
+    region = var.tfstate_region
   }
 }
 
@@ -62,8 +62,8 @@ resource "aws_vpc_security_group_ingress_rule" "postgres_from_nodes" {
   security_group_id            = aws_security_group.db.id
   description                  = "PostgreSQL from cluster nodes"
   referenced_security_group_id = local.node_sg_id
-  from_port                    = 5432
-  to_port                      = 5432
+  from_port                    = var.db_port
+  to_port                      = var.db_port
   ip_protocol                  = "tcp"
 }
 
@@ -84,6 +84,7 @@ resource "aws_db_instance" "this" {
 
   db_name  = var.db_name
   username = var.db_username
+  port     = var.db_port
 
   # AWS generates the master password and stores it in Secrets Manager, so it
   # never enters Terraform state. The alternative — random_password — writes
@@ -92,8 +93,8 @@ resource "aws_db_instance" "this" {
   manage_master_user_password = true
 
   allocated_storage     = var.allocated_storage
-  max_allocated_storage = var.allocated_storage * 3 # storage autoscaling ceiling
-  storage_type          = "gp3"
+  max_allocated_storage = var.max_allocated_storage # storage autoscaling ceiling
+  storage_type          = var.storage_type
   storage_encrypted     = true
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
@@ -108,17 +109,17 @@ resource "aws_db_instance" "this" {
   deletion_protection = var.deletion_protection
 
   backup_retention_period = var.backup_retention_days
-  backup_window           = "07:00-08:00" # UTC, ahead of the maintenance window
-  maintenance_window      = "Mon:08:30-Mon:09:30"
+  backup_window           = var.backup_window
+  maintenance_window      = var.maintenance_window
 
   auto_minor_version_upgrade = true
-  apply_immediately          = false # roll changes in the maintenance window
+  apply_immediately          = var.apply_immediately
 
   # Postgres logs only. `upgrade` is not a valid export type for this engine
   # and RDS rejects the whole create if it is listed.
-  enabled_cloudwatch_logs_exports = ["postgresql"]
+  enabled_cloudwatch_logs_exports = var.cloudwatch_logs_exports
 
-  performance_insights_enabled = false # not free on burstable classes
+  performance_insights_enabled = var.performance_insights_enabled
 
   # A final snapshot on destroy is the safety net that makes tearing this down
   # reversible. Named with a timestamp because RDS rejects a duplicate

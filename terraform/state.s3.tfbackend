@@ -1,0 +1,14 @@
+# Backend settings shared by every root under terraform/: the ECR/CI root here
+# and platform, platform-db and platform-addons below it. Each root's
+# versions.tf holds only its own state key, and is initialised with
+#
+#   terraform init -backend-config=state.s3.tfbackend      (from terraform/)
+#   terraform init -backend-config=../state.s3.tfbackend   (from a platform root)
+#
+# Terraform cannot read variables into backend configuration, so the roots
+# that also need the bucket as a value — for IAM policy, or to read the
+# platform root's state — take it as tfstate_bucket / tfstate_region in their
+# terraform.tfvars, and those must match this file.
+
+bucket = "edx-backtage-tfstate-724772096574"
+region = "us-east-1"

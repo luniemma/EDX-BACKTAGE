@@ -1,6 +1,17 @@
+# Every variable in variables.tf, since none of them has a default. Copy to
+# terraform.tfvars and adjust.
+
 aws_region      = "us-east-1"
 project         = "backend-api"
 repository_name = "backend-api"
+
+# IMMUTABLE is recommended for anything past development.
+image_tag_mutability       = "IMMUTABLE"
+untagged_image_expire_days = 7
+keep_last_release_images   = 30
+keep_last_sha_images       = 50
+release_image_tag_patterns = ["v*"]
+dev_image_tag_patterns     = ["sha-*"]
 
 github_owner = "luniemma"
 github_repo  = "backend-api"
@@ -12,6 +23,11 @@ github_push_tags     = ["v*.*.*"]
 # Flip to false if an OIDC provider for token.actions.githubusercontent.com
 # already exists in the account (only one per account is allowed).
 create_github_oidc_provider = true
+
+# Must match state.s3.tfbackend (bucket) and versions.tf (key).
+tfstate_bucket           = "my-tfstate-bucket"
+tfstate_key              = "backend-api/ecr/terraform.tfstate"
+terraform_apply_branches = ["main"]
 
 # Add EKS cluster account IDs here if the cluster lives in a different account.
 additional_pull_account_ids = []

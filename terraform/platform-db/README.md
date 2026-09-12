@@ -79,6 +79,10 @@ the only thing in this stack holding state worth keeping.
 
 ## Running it
 
+Instance class, storage, backup retention and windows, and the port are set in
+`terraform/platform-db/terraform.tfvars`, not in the code. Review them before
+the first apply; changing one later is an edit to that file.
+
 ```
 gh workflow run platform.yml --ref main -f root=both
 ```

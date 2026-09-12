@@ -12,10 +12,13 @@ terraform {
   # margin than the database does: destroying it means re-delegating
   # nameservers at the registrar and waiting out DNS propagation, which is the
   # one part of this stack that cannot be fixed by re-running a workflow.
+  #
+  # Partial configuration: bucket and region come from the file shared by every
+  # root under terraform/, so initialise with
+  #
+  #   terraform init -backend-config=../state.s3.tfbackend
   backend "s3" {
-    bucket       = "edx-backtage-tfstate-724772096574"
     key          = "edx/platform-dns/terraform.tfstate"
-    region       = "us-east-1"
     encrypt      = true
     use_lockfile = true
   }

@@ -26,6 +26,7 @@ on:
       - "terraform/platform/**"
       - "terraform/platform-db/**"
       - "terraform/platform-addons/**"
+      - "terraform/state.s3.tfbackend"
       - ".github/workflows/platform.yml"
   workflow_dispatch:
     inputs:
@@ -89,7 +90,7 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       - name: Validate
         run: terraform validate
@@ -167,7 +168,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       - name: Apply
         run: terraform apply -input=false -auto-approve
@@ -203,7 +204,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       - name: Apply
         run: terraform apply -input=false -auto-approve
@@ -245,7 +246,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       # First creation takes 5-10 minutes; RDS reports `creating` for most of it.
       - name: Apply
@@ -288,7 +289,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       - name: Apply
         run: terraform apply -input=false -auto-approve
@@ -312,8 +313,10 @@ jobs:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - uses: ./.github/actions/cluster-name
+
       - name: Kubeconfig
-        run: aws eks update-kubeconfig --region "${AWS_REGION}" --name edx-rhdh
+        run: aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}"
 
       - name: Nodes are Ready
         run: |

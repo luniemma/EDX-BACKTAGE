@@ -10,10 +10,12 @@ terraform {
     }
   }
 
+  # Partial configuration: bucket and region come from state.s3.tfbackend,
+  # shared by every root under terraform/, so initialise with
+  #
+  #   terraform init -backend-config=state.s3.tfbackend
   backend "s3" {
-    bucket       = "edx-backtage-tfstate-724772096574"
     key          = "backend-api/ecr/terraform.tfstate"
-    region       = "us-east-1"
     encrypt      = true
     use_lockfile = true
   }
