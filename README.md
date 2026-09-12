@@ -275,6 +275,12 @@ Details, including how to re-pin the chart itself, are in the
 State lives in S3, and plan/apply run in GitHub Actions. Local runs are only for
 bootstrapping. See `terraform/README.md`.
 
+The lean EKS platform RHDH runs on lives alongside it in `terraform/platform`,
+`platform-db`, `platform-addons` and `platform-dns` — see
+[docs/PLATFORM.md](docs/PLATFORM.md). In every root, the values it deploys are
+in its committed `terraform.tfvars` (variables carry no defaults), and the
+state bucket and region are in `terraform/state.s3.tfbackend`.
+
 ## CI / CD (GitHub Actions)
 
 | Workflow | Trigger | Does |
@@ -282,6 +288,9 @@ bootstrapping. See `terraform/README.md`.
 | `ci.yml` | PR + push to `main` | `helm dependency build` → `helm lint` → `helm template` for all three environments → image/appVersion pin check → catalog entities parse and every `catalog/all.yaml` target resolves |
 | `security.yml` | PR + push + weekly cron | Trivy fs, Trivy config (rendered Helm + IaC), Gitleaks — all to the **Security** tab as SARIF |
 | `terraform.yml` | PR/push touching `terraform/**` | `plan` on PRs (read-only role, posts the plan as a comment); `apply` on `main` |
+| `platform.yml` | PR touching the platform roots; manual dispatch | `plan` on PRs; `apply` of the platform roots on dispatch only; cluster health check |
+| `destroy.yml` | Manual dispatch only | Ordered teardown of the platform |
+| `drift.yml` | Daily schedule; dispatch | Terraform plans and ArgoCD sync state compared with what is committed |
 
 `cd-dev.yml`, `promote.yml` and `release.yml` are gone with the image build.
 
@@ -291,9 +300,11 @@ Settings → Secrets and variables → Actions → **Variables**:
 
 | Variable | Value |
 | --- | --- |
-| `AWS_REGION` | `us-east-1` |
+| `AWS_REGION` | `us-east-1` — must match `aws_region` in the tfvars |
 | `TF_PLAN_ROLE_ARN` | `terraform output -raw terraform_plan_role_arn` |
 | `TF_APPLY_ROLE_ARN` | `terraform output -raw terraform_apply_role_arn` |
+| `TF_PLATFORM_PLAN_ROLE_ARN` | `terraform -chdir=terraform/platform output -raw platform_plan_role_arn` |
+| `TF_PLATFORM_APPLY_ROLE_ARN` | `terraform -chdir=terraform/platform output -raw platform_apply_role_arn` |
 
 ### Scanning gates
 

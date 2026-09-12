@@ -53,3 +53,28 @@ argocd_resources = {
     limits   = { memory = "256Mi" }
   }
 }
+
+# DNS and TLS. None of it is installed until platform-dns has a domain.
+name                 = "edx-rhdh"
+dns_tfstate_key      = "edx/platform-dns/terraform.tfstate"
+acme_email           = "platform@example.com"
+acme_server          = "https://acme-v02.api.letsencrypt.org/directory"
+cluster_issuer_name  = "letsencrypt-prod"
+external_dns_version = "1.15.0"
+cert_manager_version = "v1.16.2"
+
+external_dns_namespace          = "external-dns"
+external_dns_chart_repository   = "https://kubernetes-sigs.github.io/external-dns"
+cert_manager_namespace          = "cert-manager"
+cert_manager_chart_repository   = "https://charts.jetstack.io"
+dns_addons_helm_timeout_seconds = 600
+
+external_dns_resources = {
+  requests = { cpu = "20m", memory = "64Mi" }
+  limits   = { memory = "128Mi" }
+}
+
+cert_manager_resources = {
+  requests = { cpu = "20m", memory = "64Mi" }
+  limits   = { memory = "192Mi" }
+}

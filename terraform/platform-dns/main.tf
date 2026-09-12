@@ -8,34 +8,8 @@
 # owns the zone and everything under it, and nothing it creates costs more than
 # $0.50/month or takes longer than a propagation window to undo.
 #
-# Everything here is gated on var.domain_name. Empty by default, so this root
-# applies cleanly and creates nothing until someone supplies a domain.
-
-variable "domain_name" {
-  description = <<-EOT
-    The domain this platform serves from, e.g. "example.com". Empty disables
-    the whole root — no zone, no records, no cost.
-
-    Delegate this domain's nameservers to the values in the `nameservers`
-    output after the first apply. Until that delegation happens the zone
-    answers only itself and certificate issuance will fail, which looks like a
-    cert-manager problem and is not.
-  EOT
-  type        = string
-  default     = ""
-}
-
-variable "project" {
-  description = "Tag applied to everything this root creates."
-  type        = string
-  default     = "edx-backtage"
-}
-
-variable "aws_region" {
-  description = "Region for the provider. Route53 is global; this only sets where API calls go."
-  type        = string
-  default     = "us-east-1"
-}
+# Everything here is gated on var.domain_name. It is empty in terraform.tfvars,
+# so this root applies cleanly and creates nothing until someone supplies one.
 
 provider "aws" {
   region = var.aws_region

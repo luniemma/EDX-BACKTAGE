@@ -102,19 +102,16 @@ variable "argocd_resources" {
 variable "name" {
   description = "Name prefix, matching the platform root so IAM roles stay inside the edx-rhdh-* scope the CI roles are limited to."
   type        = string
-  default     = "edx-rhdh"
 }
 
 variable "external_dns_version" {
   description = "external-dns chart version."
   type        = string
-  default     = "1.15.0"
 }
 
 variable "cert_manager_version" {
   description = "cert-manager chart version."
   type        = string
-  default     = "v1.16.2"
 }
 
 variable "acme_email" {
@@ -124,5 +121,63 @@ variable "acme_email" {
     renewal has quietly broken.
   EOT
   type        = string
-  default     = "platform@example.com"
+}
+
+variable "dns_tfstate_key" {
+  description = "State key of the platform-dns root, read for the zone. Must match the key in ../platform-dns/versions.tf."
+  type        = string
+}
+
+variable "external_dns_namespace" {
+  description = "Namespace for external-dns. Its IRSA trust policy names the service account in this namespace."
+  type        = string
+}
+
+variable "external_dns_chart_repository" {
+  description = "Helm repository external-dns is installed from."
+  type        = string
+}
+
+variable "cert_manager_namespace" {
+  description = "Namespace for cert-manager."
+  type        = string
+}
+
+variable "cert_manager_chart_repository" {
+  description = "Helm repository cert-manager is installed from."
+  type        = string
+}
+
+variable "dns_addons_helm_timeout_seconds" {
+  description = "How long external-dns and cert-manager may each take to become ready before the apply fails."
+  type        = number
+}
+
+variable "external_dns_resources" {
+  description = "external-dns requests and limits, in the chart's resources shape."
+  type = object({
+    requests = map(string)
+    limits   = map(string)
+  })
+}
+
+variable "cert_manager_resources" {
+  description = "cert-manager requests and limits, in the chart's resources shape."
+  type = object({
+    requests = map(string)
+    limits   = map(string)
+  })
+}
+
+variable "acme_server" {
+  description = "ACME directory the ClusterIssuer registers with and requests certificates from."
+  type        = string
+}
+
+variable "cluster_issuer_name" {
+  description = <<-EOT
+    Name of the cert-manager ClusterIssuer. values-prod.yaml already names this
+    issuer, so the name is a contract: change both together.
+  EOT
+  type        = string
 }

@@ -168,7 +168,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Init
-        run: terraform init -input=false
+        run: terraform init -input=false -backend-config=../state.s3.tfbackend
 
       - name: Apply
         run: terraform apply -input=false -auto-approve
