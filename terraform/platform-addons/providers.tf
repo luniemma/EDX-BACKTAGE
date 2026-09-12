@@ -9,9 +9,9 @@ data "terraform_remote_state" "platform" {
   backend = "s3"
 
   config = {
-    bucket = "edx-backtage-tfstate-724772096574"
-    key    = "edx/platform/terraform.tfstate"
-    region = "us-east-1"
+    bucket = var.tfstate_bucket
+    key    = var.platform_tfstate_key
+    region = var.tfstate_region
   }
 }
 

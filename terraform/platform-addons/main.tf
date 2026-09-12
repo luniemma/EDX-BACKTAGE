@@ -7,16 +7,16 @@
 
 resource "helm_release" "ingress_nginx" {
   name             = "ingress-nginx"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
+  repository       = var.ingress_nginx_chart_repository
   chart            = "ingress-nginx"
   version          = var.ingress_nginx_version
-  namespace        = "ingress-nginx"
+  namespace        = var.ingress_nginx_namespace
   create_namespace = true
 
   # The NLB takes a few minutes to become active and the chart's readiness
   # gate does not wait for it; without this, dependent resources race it.
   wait    = true
-  timeout = 900
+  timeout = var.helm_timeout_seconds
 
   values = [yamlencode({
     controller = {
@@ -52,7 +52,7 @@ resource "helm_release" "ingress_nginx" {
 
       # Two nodes, and the controller is the only path in — one replica per
       # node so a Spot reclamation cannot take the entire ingress with it.
-      replicaCount = 2
+      replicaCount = var.ingress_nginx_replicas
 
       # Spot nodes get reclaimed; spread rather than stack.
       topologySpreadConstraints = [{
@@ -67,15 +67,7 @@ resource "helm_release" "ingress_nginx" {
         }
       }]
 
-      resources = {
-        requests = {
-          cpu    = "100m"
-          memory = "128Mi"
-        }
-        limits = {
-          memory = "384Mi"
-        }
-      }
+      resources = var.ingress_nginx_resources
     }
   })]
 }
@@ -89,35 +81,29 @@ resource "helm_release" "ingress_nginx" {
 
 resource "helm_release" "argocd" {
   name             = "argocd"
-  repository       = "https://argoproj.github.io/argo-helm"
+  repository       = var.argocd_chart_repository
   chart            = "argo-cd"
   version          = var.argocd_version
   namespace        = var.argocd_namespace
   create_namespace = true
 
   wait    = true
-  timeout = 900
+  timeout = var.helm_timeout_seconds
 
   values = [yamlencode({
     # Single-instance, non-HA. HA mode wants three Redis replicas and more
     # controller memory than a two-node t3.medium cluster has to spare.
     redis-ha = { enabled = false }
     controller = {
-      replicas = 1
-      resources = {
-        requests = { cpu = "100m", memory = "256Mi" }
-        limits   = { memory = "1Gi" }
-      }
+      replicas  = var.argocd_replicas.controller
+      resources = var.argocd_resources.controller
     }
     repoServer = {
-      replicas = 1
-      resources = {
-        requests = { cpu = "50m", memory = "128Mi" }
-        limits   = { memory = "512Mi" }
-      }
+      replicas  = var.argocd_replicas.repoServer
+      resources = var.argocd_resources.repoServer
     }
     applicationSet = {
-      replicas = 1
+      replicas = var.argocd_replicas.applicationSet
     }
 
     # Two components this platform installs and never uses. Neither is billed
@@ -138,11 +124,8 @@ resource "helm_release" "argocd" {
       enabled = false
     }
     server = {
-      replicas = 1
-      resources = {
-        requests = { cpu = "50m", memory = "128Mi" }
-        limits   = { memory = "256Mi" }
-      }
+      replicas  = var.argocd_replicas.server
+      resources = var.argocd_resources.server
       # No Ingress for the ArgoCD UI. It would need its own hostname and a
       # certificate, and the admin password is a Secret in the cluster —
       # reach it with `kubectl port-forward` instead. See outputs.tf.

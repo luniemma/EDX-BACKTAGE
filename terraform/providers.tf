@@ -6,7 +6,7 @@ provider "aws" {
       {
         Project     = var.project
         ManagedBy   = "terraform"
-        Application = "backend-api"
+        Application = var.repository_name
       },
       var.extra_tags,
     )

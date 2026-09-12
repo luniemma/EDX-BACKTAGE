@@ -28,14 +28,12 @@ locals {
 
   github_oidc_arn = "arn:${local.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
 
-  platform_state_arns = [
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform/terraform.tfstate",
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform/terraform.tfstate.tflock",
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-addons/terraform.tfstate",
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-addons/terraform.tfstate.tflock",
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-db/terraform.tfstate",
-    "arn:${local.partition}:s3:::${var.tfstate_bucket}/edx/platform-db/terraform.tfstate.tflock",
-  ]
+  platform_state_arns = flatten([
+    for key in var.platform_tfstate_keys : [
+      "arn:${local.partition}:s3:::${var.tfstate_bucket}/${key}",
+      "arn:${local.partition}:s3:::${var.tfstate_bucket}/${key}.tflock",
+    ]
+  ])
 
   platform_managed_iam = [
     "arn:${local.partition}:iam::${local.account_id}:role/${var.name}-*",

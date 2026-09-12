@@ -17,9 +17,10 @@ rendered/
 *.rendered.yaml
 
 # Terraform — state can hold sensitive values and is kept in S3, not here.
-# terraform.tfvars IS committed on purpose: it holds no secrets, and the CI
-# plan/apply jobs need it (github_owner/github_repo have no defaults, and
-# create_github_oidc_provider must stay false). Never put secrets in it.
+# terraform.tfvars IS committed on purpose, in every root: it holds no
+# secrets, and the CI plan/apply/drift jobs need it (the variables it sets
+# have no defaults, and in the ECR root create_github_oidc_provider must stay
+# false). Never put secrets in it.
 .terraform/
 *.tfstate
 *.tfstate.*

@@ -23,5 +23,5 @@ output "ingress_hostname_command" {
     The NLB hostname backing every Ingress. Point DNS at this, or use a
     *.nip.io host derived from its resolved address for a throwaway URL.
   EOT
-  value       = "kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+  value       = "kubectl -n ${var.ingress_nginx_namespace} get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
 }

@@ -39,15 +39,17 @@ Terraform itself.
 
 ## State
 
-State lives in S3 — `edx-backtage-tfstate-724772096574`, key
+State lives in S3 — the bucket and region in `state.s3.tfbackend`, key
 `backend-api/ecr/terraform.tfstate` — with versioning, AES256, public access
-blocked, and **native S3 locking** (no DynamoDB table). See the `backend` block
-in `versions.tf`.
+blocked, and **native S3 locking** (no DynamoDB table). The `backend` block in
+`versions.tf` is a partial configuration holding only the key, so every `init`
+takes `-backend-config=state.s3.tfbackend`.
 
 `terraform.tfvars` **is committed on purpose**. It holds no secrets, and CI needs
-it: `github_owner`/`github_repo` have no defaults, and
-`create_github_oidc_provider` must stay `false` because the provider already
-exists in this account. Never put secrets in it.
+it: no variable in `variables.tf` has a default, so this file is the whole
+description of the deployment — and `create_github_oidc_provider` must stay
+`false` because the provider already exists in this account. Never put secrets
+in it.
 
 ## Normal workflow: through GitHub Actions
 
@@ -66,7 +68,7 @@ Only needed to create the roles CI later assumes — chicken-and-egg:
 
 ```bash
 cd terraform
-terraform init
+terraform init -backend-config=state.s3.tfbackend
 terraform plan -out plan.out
 terraform apply plan.out
 ```

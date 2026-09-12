@@ -74,7 +74,7 @@ Needed once, on an account with no platform in it.
 
 - Terraform ≥ 1.11, AWS CLI v2, `kubectl`, `helm` 3.16+, `gh`
 - AWS credentials that can create IAM roles
-- The state bucket `edx-backtage-tfstate-724772096574` must already exist
+- The state bucket named in `terraform/state.s3.tfbackend` must already exist
 - Repository variable `AWS_REGION` set to `us-east-1`
 
 **The ordering problem.** `platform.yml` runs under `edx-rhdh-tf-apply`, and
@@ -82,9 +82,9 @@ that role is created by `terraform/platform`. So the first apply has to run
 locally:
 
 ```bash
-terraform -chdir=terraform/platform        init && terraform -chdir=terraform/platform        apply
-terraform -chdir=terraform/platform-db     init && terraform -chdir=terraform/platform-db     apply
-terraform -chdir=terraform/platform-addons init && terraform -chdir=terraform/platform-addons apply
+terraform -chdir=terraform/platform        init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform        apply
+terraform -chdir=terraform/platform-db     init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform-db     apply
+terraform -chdir=terraform/platform-addons init -backend-config=../state.s3.tfbackend && terraform -chdir=terraform/platform-addons apply
 ```
 
 Then publish both role ARNs so CI can take over:

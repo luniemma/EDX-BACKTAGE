@@ -84,6 +84,11 @@ In priority order:
 
 ## Applying
 
+Every value the stack runs with is in each root's committed
+`terraform.tfvars`; the variable definitions carry no defaults. The state
+bucket and its region are in `terraform/state.s3.tfbackend`, shared by all
+three roots, so `init` takes `-backend-config=../state.s3.tfbackend`.
+
 Through Actions, which is the supported path:
 
 ```
@@ -97,8 +102,8 @@ configuration CI applies — so the **first** apply has to run locally under
 credentials that can create IAM roles:
 
 ```
-cd terraform/platform        && terraform init && terraform apply
-cd ../platform-addons        && terraform init && terraform apply
+cd terraform/platform        && terraform init -backend-config=../state.s3.tfbackend && terraform apply
+cd ../platform-addons        && terraform init -backend-config=../state.s3.tfbackend && terraform apply
 ```
 
 then publish both ARNs and use the workflow from then on:

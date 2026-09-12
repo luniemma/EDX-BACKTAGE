@@ -23,18 +23,17 @@ data "aws_availability_zones" "available" {
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
 
-  # /20 per AZ out of a /16 — 4091 usable addresses each. The VPC CNI hands a
-  # VPC address to every pod, so subnets need to be generous relative to pod
-  # count, not node count.
-  public_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 4, i)]
+  # Sizing and offset are explained on var.subnet_newbits and
+  # var.private_subnet_offset.
+  public_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, var.subnet_newbits, i)]
 
-  # Offset by 8 so public and private never collide as az_count grows.
+  # Offset so public and private never collide as az_count grows.
   #
   # These carry no NAT gateway and no route to the internet, and that costs
   # nothing: a subnet is free, only the NAT is not. RDS needs no outbound
   # internet access, so the database gets proper private isolation without
   # reintroducing the $33/month this profile was built to avoid.
-  private_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 4, i + 8)]
+  private_subnets = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, var.subnet_newbits, i + var.private_subnet_offset)]
 }
 
 module "vpc" {
@@ -123,7 +122,7 @@ module "eks" {
   # is the expensive half of the ingestion — see var.enabled_cluster_log_types.
   # A week of retention is enough to debug a bad rollout.
   enabled_log_types                      = var.enabled_cluster_log_types
-  cloudwatch_log_group_retention_in_days = 7
+  cloudwatch_log_group_retention_in_days = var.cluster_log_retention_days
 
   # Managed addons. All four are free; coredns and kube-proxy are required for
   # a functioning cluster and vpc-cni is what gives pods VPC addresses.
@@ -154,7 +153,7 @@ module "eks" {
       # Spot at roughly a third of on-demand. RHDH tolerates a node going away
       # — it is a stateless Deployment behind a Service — and ArgoCD will
       # re-place anything evicted. Do not move a database onto this node group.
-      capacity_type  = "SPOT"
+      capacity_type  = var.node_capacity_type
       instance_types = var.node_instance_types
 
       # Named explicitly, and this is load-bearing rather than cosmetic. Left
@@ -184,16 +183,14 @@ module "eks" {
           device_name = "/dev/xvda"
           ebs = {
             volume_size           = var.node_disk_size
-            volume_type           = "gp3"
+            volume_type           = var.node_volume_type
             encrypted             = true
             delete_on_termination = true
           }
         }
       }
 
-      labels = {
-        "workload" = "general"
-      }
+      labels = var.node_labels
     }
   }
 }
