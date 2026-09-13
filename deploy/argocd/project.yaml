@@ -23,3 +23,12 @@ spec:
       kind: "*"
   orphanedResources:
     warn: true
+    # Created by hand in rhdh-lean, deliberately outside git: rhdh-db holds the
+    # database password copied from Secrets Manager, rhdh-secrets the GitHub
+    # OAuth credentials. Without these entries every deploy reports them as
+    # orphaned, which buries a real unowned resource under an expected warning.
+    ignore:
+      - kind: Secret
+        name: rhdh-db
+      - kind: Secret
+        name: rhdh-secrets
