@@ -30,6 +30,10 @@ db_port               = 5432
 storage_type          = "gp3"
 max_allocated_storage = 60
 
+# IAM token logins, in addition to the password. See the variable for the
+# GRANT and rds-db:connect permission a login also needs.
+iam_database_authentication_enabled = true
+
 # UTC. Backups run ahead of the maintenance window; changes wait for it.
 backup_window                = "07:00-08:00"
 maintenance_window           = "Mon:08:30-Mon:09:30"
