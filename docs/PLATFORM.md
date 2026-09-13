@@ -61,7 +61,7 @@ owners that both reconcile it produces a fight over the same objects.
 | `deploy/argocd/` | AppProject and Application manifests. |
 | `.github/workflows/platform.yml` | Plan on PR, apply on dispatch, health verify. |
 | `.github/workflows/destroy.yml` | Ordered teardown, manual dispatch only. |
-| `.github/workflows/drift.yml` | Daily comparison of what is running against what is committed. |
+| `.github/workflows/drift.yml` | Twice-daily comparison (06:00 UTC, 1pm US Central) of what is running against what is committed. |
 | `.github/actions/cluster-name/` | Reads the cluster name from `terraform/platform/terraform.tfvars` for the workflows. |
 
 ### Value profiles
@@ -476,12 +476,19 @@ Applying is dispatch-only, so nothing converges the stack on a schedule and a
 divergence can sit unnoticed. `drift.yml` is the other half of that trade: it
 changes nothing, but surfaces a difference within a day.
 
-Runs daily at 06:00 UTC, read-only, under the **plan** role. Every Terraform
-call uses `-lock=false` so it can never block a real apply.
+Runs daily at 06:00 UTC and at 1pm US Central, read-only, under each root's
+**plan** role. Every Terraform call uses `-lock=false` so it can never block a
+real apply.
+
+GitHub schedules in UTC only, and Central moves between UTC-6 and UTC-5 with
+daylight saving, so 1pm Central is two schedules — 18:00 and 19:00 UTC — and a
+`gate` job lets through the one that is 1pm in `America/Chicago` that day. It
+decides from which schedule fired rather than the clock, so a run GitHub starts
+late still counts.
 
 | Check | What it catches |
 | --- | --- |
-| `terraform plan -detailed-exitcode` on all three roots | Anything changed outside Terraform, or a merged commit nobody applied |
+| `terraform plan -detailed-exitcode` on every AWS root — ECR/CI, platform-dns, platform, platform-db, platform-addons | Anything changed outside Terraform, or a merged commit nobody applied |
 | ArgoCD Application sync and health | Objects edited in the cluster that ArgoCD cannot reconcile back |
 | Unowned workloads in `rhdh-lean` | Things running that no Application claims |
 
@@ -491,8 +498,9 @@ week.
 
 "Not deployed" is not drift. With empty state and a config describing a
 cluster, `plan` reports 51 resources to add, which would alarm every day after
-a teardown. Each job checks whether the cluster exists first and skips if it
-does not.
+a teardown. The roots that describe the cluster — platform, platform-db and
+platform-addons — check whether it exists first and skip if it does not. The
+ECR root and the DNS zone stand on their own and are always compared.
 
 ### Preventing it
 
@@ -520,6 +528,12 @@ apply, so leaving it is choosing to lose it at an unpredictable moment.
 
 ```bash
 gh workflow run platform.yml --ref main -f root=both
+```
+
+The ECR/CI root applies through its own workflow instead:
+
+```bash
+gh workflow run terraform.yml --ref main
 ```
 
 ---
@@ -622,7 +636,7 @@ than CIDR.
 | `security` | PR, push, weekly — Trivy, Gitleaks |
 | `platform` | PR (plan); manual dispatch (apply) |
 | `destroy` | Manual dispatch only |
-| `drift` | Daily schedule and dispatch — Terraform and ArgoCD drift |
+| `drift` | 06:00 UTC and 1pm US Central daily, and dispatch — Terraform drift on every AWS root, ArgoCD drift |
 | `terraform` | The ECR/OIDC root only |
 
 **Naming.** Everything the platform creates is prefixed with `name` from

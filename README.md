@@ -290,7 +290,7 @@ state bucket and region are in `terraform/state.s3.tfbackend`.
 | `terraform.yml` | PR/push touching `terraform/**` | `plan` on PRs (read-only role, posts the plan as a comment); `apply` on `main` |
 | `platform.yml` | PR touching the platform roots; manual dispatch | `plan` on PRs; `apply` of the platform roots on dispatch only; cluster health check |
 | `destroy.yml` | Manual dispatch only | Ordered teardown of the platform |
-| `drift.yml` | Daily schedule; dispatch | Terraform plans and ArgoCD sync state compared with what is committed |
+| `drift.yml` | 06:00 UTC and 1pm US Central daily; dispatch | Terraform plans of every AWS root and ArgoCD sync state compared with what is committed |
 
 `cd-dev.yml`, `promote.yml` and `release.yml` are gone with the image build.
 

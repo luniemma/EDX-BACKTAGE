@@ -3,8 +3,10 @@
 ########################################
 # Two roles, deliberately split:
 #
-#   *-tf-plan   read-only, assumable from pull_request. A PR — including one
-#               authored by anyone who can open one — can only ever read.
+#   *-tf-plan   read-only, assumable from pull_request and from the branches
+#               in var.terraform_apply_branches, where the scheduled drift
+#               check runs. A PR — including one authored by anyone who can
+#               open one — can only ever read.
 #   *-tf-apply  read/write, assumable only from the branches in
 #               var.terraform_apply_branches (main by default).
 #
@@ -45,10 +47,14 @@ data "aws_iam_policy_document" "tf_plan_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # Pull requests, plus the apply branches for the scheduled drift check,
+    # which runs from main: with only the pull_request subject it could never
+    # assume this role at all. Safe for the same reason as on the platform
+    # plan role — this role can only read.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:pull_request"]
+      values   = concat(["repo:${var.github_owner}/${var.github_repo}:pull_request"], local.tf_apply_subs)
     }
   }
 }
