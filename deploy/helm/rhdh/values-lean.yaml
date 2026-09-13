@@ -23,7 +23,7 @@ global:
   # Hostname only, no scheme and no port. The RHDH chart interpolates this into
   # 'https://{{ rhdh.hostname }}', so a scheme here yields "https://http://..."
   # and an Ingress host with a port is rejected by the API server.
-  host: "a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com"
+  host: "a691350c94fef4056999fff6b83820b0-c24af736066638c2.elb.us-east-1.amazonaws.com"
 
   edx:
     logLevel: info
@@ -37,7 +37,7 @@ backstage:
       # a port is rejected by the API server. Leaving this empty renders an
       # Ingress rule with no host, which matches every request reaching the
       # controller rather than failing loudly.
-      host: a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
+      host: a691350c94fef4056999fff6b83820b0-c24af736066638c2.elb.us-east-1.amazonaws.com
       tls:
         # No certificate yet. The NLB hostname is not a name you can issue a
         # public certificate for; put a real domain in front and switch this
@@ -98,11 +98,11 @@ backstage:
       # in front of this.
       appConfig:
         app:
-          baseUrl: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
+          baseUrl: http://a691350c94fef4056999fff6b83820b0-c24af736066638c2.elb.us-east-1.amazonaws.com
         backend:
-          baseUrl: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
+          baseUrl: http://a691350c94fef4056999fff6b83820b0-c24af736066638c2.elb.us-east-1.amazonaws.com
           cors:
-            origin: http://a110f8be2946448c68f3bfdbeb544ef7-495d1831d5da57c3.elb.us-east-1.amazonaws.com
+            origin: http://a691350c94fef4056999fff6b83820b0-c24af736066638c2.elb.us-east-1.amazonaws.com
 
           database:
             client: pg
