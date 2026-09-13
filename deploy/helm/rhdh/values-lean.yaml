@@ -103,6 +103,14 @@ backstage:
           baseUrl: http://a1c80a398b4f942659324a1d7eb2cfa6-0023bdeb0ffdf4de.elb.us-east-1.amazonaws.com
           cors:
             origin: http://a1c80a398b4f942659324a1d7eb2cfa6-0023bdeb0ffdf4de.elb.us-east-1.amazonaws.com
+          # Backstage's default Content-Security-Policy includes
+          # upgrade-insecure-requests, which makes the browser fetch the
+          # frontend's scripts over https. With no TLS here, those requests hit
+          # nginx's self-signed certificate and are refused, so the portal
+          # serves its index page and stays blank. Drop the directive while this
+          # profile is plain HTTP; remove this override with the switch to https.
+          csp:
+            upgrade-insecure-requests: false
 
           database:
             client: pg
