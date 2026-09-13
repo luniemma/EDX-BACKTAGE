@@ -187,9 +187,22 @@ jobs:
         if: steps.deployed.outputs.yes == 'true'
         run: |
           set +e
-          terraform plan -input=false -lock=false -no-color -detailed-exitcode > plan.txt 2>&1
+          terraform plan -input=false -lock=false -no-color -detailed-exitcode -out=tfplan > plan.txt 2>&1
           code=$?
           set -e
+
+          # Exit 2 also covers a plan that changes nothing but output values.
+          # Destroying a root leaves its state with no outputs, so the next
+          # plan "adds" them back without touching any infrastructure — which
+          # is how an emptied platform-dns failed this check. Only resource
+          # changes count as drift.
+          if [ "${code}" = 2 ]; then
+            changed=$(terraform show -json tfplan | jq '[.resource_changes[]? | select(.change.actions != ["no-op"] and .change.actions != ["read"])] | length')
+            if [ "${changed}" = 0 ]; then
+              echo "::notice::${{ matrix.root }}: only output values differ, no infrastructure changes"
+              code=0
+            fi
+          fi
 
           case "${code}" in
             0)
