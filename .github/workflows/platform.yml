@@ -139,12 +139,19 @@ jobs:
   # ------------------------------------------------------------- apply (main)
   # Two sequential jobs rather than a matrix: the addons root reads the
   # cluster root's outputs, so it must never start before that one finishes.
-  # First, and independent of everything else: a Route53 zone needs no cluster.
+  # A Route53 zone needs no cluster, but this job still waits for the platform
+  # root: that root owns the apply role's policy, and the policy is what grants
+  # access to this root's state key. Run in parallel, the first apply after a
+  # grant changes races the grant and fails acquiring the state lock.
   # platform-addons reads this root's outputs to scope the external-dns IAM
   # policy, so it has to exist before the add-ons apply.
   apply-dns:
     name: apply (platform-dns)
+    needs: apply-platform
     if: >-
+      always() &&
+      needs.apply-platform.result != 'failure' &&
+      needs.apply-platform.result != 'cancelled' &&
       github.event_name != 'pull_request' &&
       vars.TF_PLATFORM_APPLY_ROLE_ARN != '' &&
       (github.event.inputs.root == null || github.event.inputs.root == 'both' || github.event.inputs.root == 'platform-dns')
