@@ -106,7 +106,10 @@ Requires two repository variables, `TF_PLATFORM_PLAN_ROLE_ARN` and
 `TF_PLATFORM_APPLY_ROLE_ARN`. Both roles are created by this root, which is a
 bootstrap ordering problem — the roles CI uses are created by the
 configuration CI applies — so the **first** apply has to run locally under
-credentials that can create IAM roles:
+credentials that can create IAM roles. List that identity's ARN in
+`cluster_admin_principals` first: cluster admin is otherwise granted only to
+the CI apply role, and the `platform-addons` apply authenticates to the
+cluster as you.
 
 ```
 cd terraform/platform-dns    && terraform init -backend-config=../state.s3.tfbackend && terraform apply

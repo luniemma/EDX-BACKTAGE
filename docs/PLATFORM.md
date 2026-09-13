@@ -126,6 +126,9 @@ Needed once, on an account with no platform in it.
 - Repository variable `AWS_REGION` set to the same region as `aws_region` in
   `terraform/platform/terraform.tfvars`
 - Each root's `terraform.tfvars` reviewed — see [Configuration](#configuration)
+- Your own IAM identity listed in `cluster_admin_principals`. Cluster admin is
+  otherwise granted only to the CI apply role, and the local
+  `platform-addons` apply below authenticates to the cluster as you
 
 **The ordering problem.** `platform.yml` runs under `edx-rhdh-tf-apply`, and
 that role is created by `terraform/platform`. So the first apply has to run
@@ -264,24 +267,19 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 | Read RHDH logs | `kubectl -n rhdh-lean logs deploy/rhdh-developer-hub -c backstage-backend` |
 | Plugin install logs | same pod, `-c install-dynamic-plugins` |
 
-> 🚨 **CI applies reassign cluster admin**
+> ℹ️ **Who can reach the cluster**
 >
-> `enable_cluster_creator_admin_permissions = true` grants cluster admin to
-> **whoever runs the apply**. When CI applies from main it replaces the
-> previous access entry, and a local `kubectl` that worked five minutes ago
-> starts returning `Unauthorized`. Restore with:
+> Access is declared, not inherited from whoever ran the last apply:
 >
-> ```bash
-> aws eks create-access-entry --cluster-name edx-rhdh --region us-east-1 \
->   --principal-arn <your-arn> --type STANDARD
-> aws eks associate-access-policy --cluster-name edx-rhdh --region us-east-1 \
->   --principal-arn <your-arn> --access-scope type=cluster \
->   --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
-> ```
+> | Principal | Access |
+> | --- | --- |
+> | `edx-rhdh-tf-apply` (CI apply role) | cluster admin, always |
+> | `edx-rhdh-tf-plan` (CI plan role) | read-only, Secrets included, so plans and the drift check can refresh Helm releases |
+> | each ARN in `cluster_admin_principals` | cluster admin |
 >
-> That is drift the next apply undoes. The durable fix — declaring
-> `access_entries` explicitly so admin does not follow the applier — is not
-> yet implemented.
+> To give a person `kubectl`, add their ARN to `cluster_admin_principals` in
+> `terraform/platform/terraform.tfvars` and apply. An access entry created by
+> hand works until the next apply removes it, and the drift check reports it.
 
 ---
 
@@ -414,7 +412,9 @@ and needs deleting by hand after detaching its three managed policies.
 
 ### `kubectl` suddenly returns `Unauthorized`
 
-A CI apply took the access entry. See the warning under
+Your identity is not in `cluster_admin_principals`, or an access entry you
+created by hand was removed by the last apply. Add your ARN to
+`cluster_admin_principals` and apply — see
 [Day-2 operations](#day-2-operations).
 
 ### The portal loads but every API call fails
@@ -504,9 +504,9 @@ ECR root and the DNS zone stand on their own and are always compared.
 
 ### Preventing it
 
-- **`cluster_admin_principals`** — list the identities that must keep
-  `kubectl` access. Without it, admin follows whoever ran the last apply and
-  the previous holder is silently revoked. Restoring by hand is itself drift.
+- **`cluster_admin_principals`** — list the identities that need `kubectl`.
+  Admin is granted only to the CI apply role and to this list, so access never
+  moves with whoever ran the last apply; granting it by hand is itself drift.
 - **ArgoCD `selfHeal`** — already on. Objects it owns are reverted to what git
   says, so most in-cluster drift corrects itself and only the irreconcilable
   reaches the report.

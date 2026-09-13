@@ -85,36 +85,62 @@ module "eks" {
   endpoint_public_access_cidrs = var.public_access_cidrs
   endpoint_private_access      = true
 
-  # Grants the identity running this apply cluster-admin via an access entry,
-  # so the addons root can authenticate immediately afterwards without a
-  # separate aws-auth ConfigMap dance.
-  #
-  # It is also a drift generator, which is why var.cluster_admin_principals
-  # exists below. "Cluster creator" is resolved at apply time from whoever is
-  # running Terraform, so the entry moves: apply locally and it is your user,
-  # apply from CI and it becomes edx-rhdh-tf-apply, and the previous holder
-  # silently loses access. That happened here — a CI apply from main revoked a
-  # developer's access mid-session and kubectl started returning Unauthorized
-  # with nothing in the diff to explain it.
-  enable_cluster_creator_admin_permissions = true
+  # Cluster admin is pinned to the CI apply role, not to whoever runs
+  # Terraform. enable_cluster_creator_admin_permissions resolves "cluster
+  # creator" from the caller, so the entry moved with every identity: a CI
+  # apply from main revoked a developer's kubectl mid-session, and the drift
+  # check — which plans as the read-only plan role — reported the entry and the
+  # KMS key policy as changed on every run. The same entry is declared below
+  # under the key the module used ("cluster_creator"), so the live resources
+  # stay put and every caller plans the same thing.
+  enable_cluster_creator_admin_permissions = false
 
-  # Admin that does NOT depend on who ran the last apply. Anything listed here
-  # keeps cluster-admin no matter which identity applies, so restoring access
-  # by hand — which is itself drift the next apply reverts — stops being
-  # necessary.
-  access_entries = {
-    for arn in var.cluster_admin_principals : trimprefix(
-      replace(arn, ":", "-"), "arn-aws-iam--"
-      ) => {
-      principal_arn = arn
-      policy_associations = {
-        admin = {
-          policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = { type = "cluster" }
+  # Same reason: the module otherwise makes the caller the KMS key's
+  # administrator.
+  kms_key_administrators = [aws_iam_role.platform_apply.arn]
+
+  access_entries = merge(
+    {
+      cluster_creator = {
+        principal_arn = aws_iam_role.platform_apply.arn
+        policy_associations = {
+          admin = {
+            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = { type = "cluster" }
+          }
         }
       }
-    }
-  }
+
+      # Read-only, Secrets included. The plan role refreshes platform-addons'
+      # Helm releases, whose state lives in Secrets; with no entry at all, every
+      # plan of that root — PR plans and the drift check — failed Unauthorized.
+      ci_plan_read = {
+        principal_arn = aws_iam_role.platform_plan.arn
+        policy_associations = {
+          view = {
+            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+            access_scope = { type = "cluster" }
+          }
+        }
+      }
+    },
+
+    # Humans and other roles that need kubectl. Declared rather than granted
+    # by hand, which is drift the next apply reverts.
+    {
+      for arn in var.cluster_admin_principals : trimprefix(
+        replace(arn, ":", "-"), "arn-aws-iam--"
+        ) => {
+        principal_arn = arn
+        policy_associations = {
+          admin = {
+            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = { type = "cluster" }
+          }
+        }
+      }
+    },
+  )
 
   # Control plane logs go to CloudWatch and are billed twice over: once on
   # ingestion, then again on storage for as long as they are retained. The
