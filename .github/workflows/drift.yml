@@ -24,6 +24,12 @@ on:
     # 06:00 UTC daily — before the working day in Europe, after any overnight
     # automation has settled.
     - cron: "0 6 * * *"
+    # 1pm US Central, every day. Cron here is UTC only, and Central moves
+    # between UTC-6 (CST) and UTC-5 (CDT), so both candidate hours are
+    # scheduled and the `gate` job lets through only the one that is 1pm in
+    # America/Chicago that day.
+    - cron: "0 18 * * *"
+    - cron: "0 19 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -45,51 +51,130 @@ env:
   # terraform/platform/terraform.tfvars via ./.github/actions/cluster-name.
 
 jobs:
+  # Decides from the cron that fired rather than the clock, so a scheduled run
+  # GitHub starts late still counts: "0 18 * * *" is 1pm while Chicago is on
+  # CDT (-0500), "0 19 * * *" while it is on CST (-0600). The 06:00 UTC run
+  # and manual dispatches always proceed.
+  gate:
+    name: schedule gate
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Is this a run that should proceed?
+        id: decide
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          offset=$(TZ=America/Chicago date +%z)
+          case "${GITHUB_EVENT_NAME}|${SCHEDULE}|${offset}" in
+            "workflow_dispatch|"*)        run=true ;;
+            "schedule|0 6 * * *|"*)       run=true ;;
+            "schedule|0 18 * * *|-0500")  run=true ;;
+            "schedule|0 19 * * *|-0600")  run=true ;;
+            *)                            run=false ;;
+          esac
+          echo "event=${GITHUB_EVENT_NAME} schedule='${SCHEDULE}' chicago_offset=${offset} -> run=${run}"
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+  # Every Terraform root that describes AWS infrastructure. deploy/crossplane
+  # and deploy/tls-local are left out: they target a local minikube cluster
+  # with local state, so there is nothing here to compare them against.
   terraform:
     name: terraform drift (${{ matrix.root }})
-    if: vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        root: [platform, platform-db, platform-addons]
+        include:
+          # The ECR and CI root plans under its own role. The platform plan
+          # role cannot read this root's state, and that split is deliberate.
+          - root: ecr
+            dir: terraform
+            backend_config: state.s3.tfbackend
+            role_var: TF_PLAN_ROLE_ARN
+            needs_cluster: false
+          - root: platform-dns
+            dir: terraform/platform-dns
+            backend_config: ../state.s3.tfbackend
+            role_var: TF_PLATFORM_PLAN_ROLE_ARN
+            needs_cluster: false
+          - root: platform
+            dir: terraform/platform
+            backend_config: ../state.s3.tfbackend
+            role_var: TF_PLATFORM_PLAN_ROLE_ARN
+            needs_cluster: true
+          - root: platform-db
+            dir: terraform/platform-db
+            backend_config: ../state.s3.tfbackend
+            role_var: TF_PLATFORM_PLAN_ROLE_ARN
+            needs_cluster: true
+          - root: platform-addons
+            dir: terraform/platform-addons
+            backend_config: ../state.s3.tfbackend
+            role_var: TF_PLATFORM_PLAN_ROLE_ARN
+            needs_cluster: true
     defaults:
       run:
         shell: bash
-        working-directory: terraform/${{ matrix.root }}
+        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/cluster-name
 
+      # A root whose plan role has not been published yet is not bootstrapped.
+      # Say so and skip, rather than failing credential setup with an opaque
+      # OIDC error.
+      - name: Plan role configured?
+        id: role
+        env:
+          ROLE: ${{ vars[matrix.role_var] }}
+        run: |
+          if [ -n "${ROLE}" ]; then
+            echo "set=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "set=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${{ matrix.role_var }} is not set, so ${{ matrix.root }} is not bootstrapped — skipping"
+          fi
+
       - uses: hashicorp/setup-terraform@v3
+        if: steps.role.outputs.set == 'true'
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read-only)
+        if: steps.role.outputs.set == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.TF_PLATFORM_PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars[matrix.role_var] }}
           aws-region: ${{ env.AWS_REGION }}
 
       # Nothing deployed is not drift. With empty state and a config that
       # describes a cluster, `plan` reports 51 resources to add — which would
-      # be a drift alarm every single morning after a teardown. Check whether
-      # the stack exists at all before deciding anything is wrong.
+      # be a drift alarm every single morning after a teardown. So the roots
+      # that describe the cluster check it exists before deciding anything is
+      # wrong. The ECR root and the DNS zone stand on their own and are always
+      # compared.
       - name: Is the stack deployed?
         id: deployed
+        if: steps.role.outputs.set == 'true'
         run: |
-          if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+          if [ "${{ matrix.needs_cluster }}" != "true" ]; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          elif aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
             echo "yes=true" >> "$GITHUB_OUTPUT"
           else
             echo "yes=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${CLUSTER_NAME} is not deployed — nothing to compare against"
+            echo "::notice::${CLUSTER_NAME} is not deployed — nothing to compare ${{ matrix.root }} against"
           fi
 
       - name: Init
         if: steps.deployed.outputs.yes == 'true'
-        run: terraform init -input=false -backend-config=../state.s3.tfbackend
+        run: terraform init -input=false -backend-config=${{ matrix.backend_config }}
 
       # -detailed-exitcode is what makes this a check rather than a report:
       #   0  no changes        — reality matches the configuration
@@ -131,7 +216,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: drift-plan-${{ matrix.root }}
-          path: terraform/${{ matrix.root }}/plan.txt
+          path: ${{ matrix.dir }}/plan.txt
           retention-days: 7
 
   # Terraform cannot see inside the cluster. ArgoCD self-heals what it owns, so
@@ -140,7 +225,8 @@ jobs:
   # that does not apply cleanly.
   kubernetes:
     name: kubernetes drift
-    if: vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && vars.TF_PLATFORM_PLAN_ROLE_ARN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
