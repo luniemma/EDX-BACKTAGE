@@ -259,3 +259,93 @@ variable "platform_tfstate_keys" {
   EOT
   type        = list(string)
 }
+
+variable "alert_emails" {
+  description = <<-EOT
+    Addresses subscribed to the alerts topic and to the budget. Each gets a
+    confirmation mail from AWS and receives nothing until the link in it is
+    followed. Empty still creates the topic and the alarms, with no one
+    listening, and the budget with no notifications.
+
+    This repository is public: an address committed here is published.
+  EOT
+  type        = list(string)
+
+  validation {
+    condition     = alltrue([for e in var.alert_emails : can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", e))])
+    error_message = "Each alert_emails entry must be an email address."
+  }
+}
+
+variable "notify_on_recovery" {
+  description = "Also notify when an alarm returns to OK, so every alert has a matching all-clear."
+  type        = bool
+}
+
+variable "alerts_kms_deletion_window_days" {
+  description = "Waiting period, 7 to 30 days, before the alerts topic's KMS key is deleted once destroyed. It can be recovered until then."
+  type        = number
+
+  validation {
+    condition     = var.alerts_kms_deletion_window_days >= 7 && var.alerts_kms_deletion_window_days <= 30
+    error_message = "KMS accepts a deletion window of 7 to 30 days."
+  }
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly AWS cost for the whole account, in USD. budget_notifications are percentages of this."
+  type        = number
+
+  validation {
+    condition     = var.monthly_budget_usd > 0
+    error_message = "monthly_budget_usd must be greater than zero."
+  }
+}
+
+variable "budget_notifications" {
+  description = <<-EOT
+    When the budget mails alert_emails, as a percentage of monthly_budget_usd.
+    ACTUAL fires on spend already incurred; FORECASTED fires when AWS projects
+    the month will end over the threshold, which is the earlier warning.
+  EOT
+  type = list(object({
+    notification_type = string
+    threshold_percent = number
+  }))
+
+  validation {
+    condition     = alltrue([for n in var.budget_notifications : contains(["ACTUAL", "FORECASTED"], n.notification_type) && n.threshold_percent > 0])
+    error_message = "Each budget_notifications entry needs notification_type ACTUAL or FORECASTED and a threshold_percent above zero."
+  }
+}
+
+variable "node_alarms" {
+  description = <<-EOT
+    CloudWatch alarms on the node group, keyed by a short name that becomes
+    part of the alarm name. Each is evaluated across every node in the group
+    through the AutoScalingGroupName dimension. Thresholds are in the metric's
+    own CloudWatch unit.
+  EOT
+  type = map(object({
+    namespace           = string
+    metric_name         = string
+    statistic           = string
+    comparison_operator = string
+    threshold           = number
+    period              = number
+    evaluation_periods  = number
+    treat_missing_data  = string
+    description         = string
+  }))
+
+  validation {
+    condition = alltrue([
+      for a in values(var.node_alarms) :
+      contains(["GreaterThanOrEqualToThreshold", "GreaterThanThreshold", "LessThanThreshold", "LessThanOrEqualToThreshold"], a.comparison_operator) &&
+      contains(["SampleCount", "Average", "Sum", "Minimum", "Maximum"], a.statistic) &&
+      contains(["missing", "ignore", "breaching", "notBreaching"], a.treat_missing_data) &&
+      a.period >= 60 && a.evaluation_periods >= 1
+    ])
+    error_message = "Each node_alarms entry needs a threshold comparison_operator, a basic statistic (SampleCount, Average, Sum, Minimum, Maximum), a treat_missing_data of missing/ignore/breaching/notBreaching, period >= 60 and evaluation_periods >= 1."
+  }
+}

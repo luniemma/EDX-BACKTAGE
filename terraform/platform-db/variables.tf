@@ -178,3 +178,38 @@ variable "rhdh_db_secret_name" {
   description = "Secret kubernetes_secret_command writes the password into. The RHDH chart values must read the same one."
   type        = string
 }
+
+variable "notify_on_recovery" {
+  description = "Also notify when an alarm returns to OK, so every alert has a matching all-clear."
+  type        = bool
+}
+
+variable "db_alarms" {
+  description = <<-EOT
+    CloudWatch alarms on the instance, keyed by a short name that becomes part
+    of the alarm name. Thresholds are in the metric's own CloudWatch unit —
+    FreeStorageSpace and FreeableMemory are bytes, not megabytes.
+  EOT
+  type = map(object({
+    namespace           = string
+    metric_name         = string
+    statistic           = string
+    comparison_operator = string
+    threshold           = number
+    period              = number
+    evaluation_periods  = number
+    treat_missing_data  = string
+    description         = string
+  }))
+
+  validation {
+    condition = alltrue([
+      for a in values(var.db_alarms) :
+      contains(["GreaterThanOrEqualToThreshold", "GreaterThanThreshold", "LessThanThreshold", "LessThanOrEqualToThreshold"], a.comparison_operator) &&
+      contains(["SampleCount", "Average", "Sum", "Minimum", "Maximum"], a.statistic) &&
+      contains(["missing", "ignore", "breaching", "notBreaching"], a.treat_missing_data) &&
+      a.period >= 60 && a.evaluation_periods >= 1
+    ])
+    error_message = "Each db_alarms entry needs a threshold comparison_operator, a basic statistic (SampleCount, Average, Sum, Minimum, Maximum), a treat_missing_data of missing/ignore/breaching/notBreaching, period >= 60 and evaluation_periods >= 1."
+  }
+}

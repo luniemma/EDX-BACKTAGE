@@ -255,6 +255,70 @@ data "aws_iam_policy_document" "platform_apply" {
     resources = [local.eks_ami_parameters]
   }
 
+  # Alerts. The topic and its subscriptions, and the alarms, are name-prefixed
+  # like the IAM writes; the KMS key is covered by KmsForSecretEncryption.
+  statement {
+    sid    = "ManageAlertsTopic"
+    effect = "Allow"
+    actions = [
+      "sns:CreateTopic",
+      "sns:DeleteTopic",
+      "sns:GetSubscriptionAttributes",
+      "sns:GetTopicAttributes",
+      "sns:ListSubscriptionsByTopic",
+      "sns:ListTagsForResource",
+      "sns:SetSubscriptionAttributes",
+      "sns:SetTopicAttributes",
+      "sns:Subscribe",
+      "sns:TagResource",
+      "sns:Unsubscribe",
+      "sns:UntagResource",
+    ]
+    resources = ["arn:${local.partition}:sns:${var.aws_region}:${local.account_id}:${var.name}-*"]
+  }
+
+  statement {
+    sid    = "ManageAlarms"
+    effect = "Allow"
+    actions = [
+      "cloudwatch:DeleteAlarms",
+      "cloudwatch:ListTagsForResource",
+      "cloudwatch:PutMetricAlarm",
+      "cloudwatch:TagResource",
+      "cloudwatch:UntagResource",
+    ]
+    resources = ["arn:${local.partition}:cloudwatch:${var.aws_region}:${local.account_id}:alarm:${var.name}-*"]
+  }
+
+  # Read-only, so granted region-wide rather than per alarm.
+  statement {
+    sid       = "DescribeAlarms"
+    effect    = "Allow"
+    actions   = ["cloudwatch:DescribeAlarms"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.aws_region]
+    }
+  }
+
+  # Budgets is global, so there is no region to lock to; the name prefix is
+  # the boundary.
+  statement {
+    sid    = "ManageBudget"
+    effect = "Allow"
+    actions = [
+      "budgets:ListTagsForResource",
+      "budgets:ModifyBudget",
+      "budgets:TagResource",
+      "budgets:UntagResource",
+      "budgets:ViewBudget",
+    ]
+    resources = ["arn:${local.partition}:budgets::${local.account_id}:budget/${var.name}-*"]
+  }
+
   # This root's state, and the addons root's — the addons workflow runs under
   # the same role and reads this one's outputs.
   statement {
@@ -351,6 +415,15 @@ data "aws_iam_policy_document" "platform_plan" {
       "rds:ListTagsForResource",
       "secretsmanager:DescribeSecret",
       "secretsmanager:ListSecrets",
+      # The alerts topic and its subscriptions, the alarms and the budget.
+      "sns:GetSubscriptionAttributes",
+      "sns:GetTopicAttributes",
+      "sns:ListSubscriptionsByTopic",
+      "sns:ListTagsForResource",
+      "cloudwatch:DescribeAlarms",
+      "cloudwatch:ListTagsForResource",
+      "budgets:ListTagsForResource",
+      "budgets:ViewBudget",
     ]
     resources = ["*"]
   }

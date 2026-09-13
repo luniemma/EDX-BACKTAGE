@@ -316,13 +316,16 @@ jobs:
       # include aws_iam_role.platform_apply — the role this step is currently
       # authenticated as — and terraform would delete its own credentials
       # mid-run. These targets cover everything that bills: the control plane,
-      # the nodes, their volumes, the KMS key and the log group.
+      # the nodes, their volumes, the KMS key, the log group and the node
+      # alarms. The alerts topic, its key and the budget stay, like the CI
+      # roles: they are what reports a platform that should not be running.
       - name: Destroy
         run: |
           terraform destroy -input=false -auto-approve \
             -target=aws_eks_addon.ebs_csi \
             -target=aws_iam_role_policy_attachment.ebs_csi \
             -target=aws_iam_role.ebs_csi \
+            -target=aws_cloudwatch_metric_alarm.nodes \
             -target=module.eks \
             -target=module.vpc
 

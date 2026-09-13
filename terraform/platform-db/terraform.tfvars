@@ -40,3 +40,43 @@ performance_insights_enabled = false
 # Where kubernetes_secret_command writes the password.
 rhdh_namespace      = "rhdh-lean"
 rhdh_db_secret_name = "rhdh-db"
+
+# Alarms, published to the platform root's alerts topic. Thresholds are in each
+# metric's CloudWatch unit: FreeStorageSpace and FreeableMemory are bytes.
+notify_on_recovery = true
+
+db_alarms = {
+  cpu_high = {
+    namespace           = "AWS/RDS"
+    metric_name         = "CPUUtilization"
+    statistic           = "Average"
+    comparison_operator = "GreaterThanThreshold"
+    threshold           = 80 # percent
+    period              = 300
+    evaluation_periods  = 3
+    treat_missing_data  = "missing"
+    description         = "Database CPU has been above 80% for 15 minutes."
+  }
+  free_storage_low = {
+    namespace           = "AWS/RDS"
+    metric_name         = "FreeStorageSpace"
+    statistic           = "Minimum"
+    comparison_operator = "LessThanThreshold"
+    threshold           = 2147483648 # 2 GiB, of 20 allocated
+    period              = 300
+    evaluation_periods  = 2
+    treat_missing_data  = "missing"
+    description         = "Less than 2 GiB of database storage left, even with storage autoscaling."
+  }
+  freeable_memory_low = {
+    namespace           = "AWS/RDS"
+    metric_name         = "FreeableMemory"
+    statistic           = "Average"
+    comparison_operator = "LessThanThreshold"
+    threshold           = 104857600 # 100 MiB, of db.t4g.micro's 1 GiB
+    period              = 300
+    evaluation_periods  = 3
+    treat_missing_data  = "missing"
+    description         = "Less than 100 MiB of database memory available for 15 minutes."
+  }
+}

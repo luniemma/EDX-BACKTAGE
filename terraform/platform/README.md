@@ -32,6 +32,7 @@ Roughly **$115/month** before data transfer, at `us-east-1` list prices:
 | Public IPv4 addresses | 7 |
 | 2 × 30 GiB gp3 root volumes | 5 |
 | CloudWatch control-plane logs (api + authenticator, 7 days) | <1 |
+| Alerts: KMS key + 5 CloudWatch alarms | 1.5 |
 
 **The control plane is 63% of that and is not reducible while this is EKS.**
 Everything below it has already been trimmed: Spot rather than on-demand
@@ -189,6 +190,11 @@ stranded.
 IAM roles are free, so keeping them costs nothing and leaves the stack
 re-appliable. Delete them by hand if you are retiring it for good.
 
+The alerts topic, its KMS key and the monthly budget are kept too, for a better
+reason: they are what reports a platform left running. The node alarms are not
+— they watch the node group, so they are targeted with it. See "Monitoring and
+alerts" in `docs/PLATFORM.md`.
+
 Doing it locally instead, same ordering, with the same caveat about the roles:
 
 ```
@@ -197,6 +203,7 @@ terraform -chdir=terraform/platform destroy \
   -target=aws_eks_addon.ebs_csi \
   -target=aws_iam_role_policy_attachment.ebs_csi \
   -target=aws_iam_role.ebs_csi \
+  -target=aws_cloudwatch_metric_alarm.nodes \
   -target=module.eks \
   -target=module.vpc
 ```

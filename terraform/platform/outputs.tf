@@ -56,3 +56,8 @@ output "kubeconfig_command" {
   description = "Copy-paste to point kubectl at this cluster."
   value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
 }
+
+output "alerts_topic_arn" {
+  description = "SNS topic every platform alarm publishes to. platform-db reads it for the database alarms."
+  value       = aws_sns_topic.alerts.arn
+}
