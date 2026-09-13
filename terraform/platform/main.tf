@@ -124,6 +124,24 @@ module "eks" {
   enabled_log_types                      = var.enabled_cluster_log_types
   cloudwatch_log_group_retention_in_days = var.cluster_log_retention_days
 
+  # Node to node on every port. The module's recommended rules open only
+  # 1025-65535 between nodes, and with the VPC CNI pods share the node security
+  # group, so a pod could not reach a pod on the other node on a low port.
+  # ingress-nginx listens on 80 and 443: the NLB's node port lands on either
+  # node and kube-proxy forwards to either controller pod, so every connection
+  # routed to the pod on the other node was dropped, and the NLB marked its
+  # targets unhealthy. Backstage, on 7007, never showed it.
+  node_security_group_additional_rules = {
+    ingress_self_all = {
+      description = "Node to node, all ports and protocols"
+      protocol    = "-1"
+      from_port   = 0
+      to_port     = 0
+      type        = "ingress"
+      self        = true
+    }
+  }
+
   # Managed addons. All four are free; coredns and kube-proxy are required for
   # a functioning cluster and vpc-cni is what gives pods VPC addresses.
   #
