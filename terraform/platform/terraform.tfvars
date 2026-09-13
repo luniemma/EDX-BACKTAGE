@@ -20,6 +20,7 @@ platform_tfstate_keys = [
   "edx/platform/terraform.tfstate",
   "edx/platform-addons/terraform.tfstate",
   "edx/platform-db/terraform.tfstate",
+  "edx/platform-dns/terraform.tfstate",
 ]
 
 github_owner             = "luniemma"
