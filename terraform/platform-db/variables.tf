@@ -213,3 +213,17 @@ variable "db_alarms" {
     error_message = "Each db_alarms entry needs a threshold comparison_operator, a basic statistic (SampleCount, Average, Sum, Minimum, Maximum), a treat_missing_data of missing/ignore/breaching/notBreaching, period >= 60 and evaluation_periods >= 1."
   }
 }
+
+variable "iam_database_authentication_enabled" {
+  description = <<-EOT
+    Allow IAM database authentication on the instance. Password logins keep
+    working alongside it, and RHDH keeps using its password.
+
+    The switch alone lets nobody in. A token login also needs, per database
+    user, `GRANT rds_iam TO <user>;` — after which that user can no longer log
+    in with a password — and, per IAM principal, rds-db:connect on
+    arn:aws:rds-db:<region>:<account>:dbuser:<DbiResourceId>/<user>. Tokens
+    are made with `aws rds generate-db-auth-token` and last 15 minutes.
+  EOT
+  type        = bool
+}

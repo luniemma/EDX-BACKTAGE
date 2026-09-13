@@ -92,6 +92,12 @@ resource "aws_db_instance" "this" {
   # See outputs.tf for retrieving it.
   manage_master_user_password = true
 
+  # Lets IAM principals connect with a short-lived token instead of a password.
+  # It adds a way in; it does not remove the password, which RHDH still uses —
+  # Backstage's pg client cannot generate IAM tokens. See the variable for what
+  # a login actually needs beyond this switch.
+  iam_database_authentication_enabled = var.iam_database_authentication_enabled
+
   allocated_storage     = var.allocated_storage
   max_allocated_storage = var.max_allocated_storage # storage autoscaling ceiling
   storage_type          = var.storage_type
