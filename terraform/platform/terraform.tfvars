@@ -51,3 +51,46 @@ node_volume_type    = "gp3"
 node_labels = {
   workload = "general"
 }
+
+# Alerts. The topic, its KMS key and the budget survive a cluster teardown; the
+# node alarms go with the node group.
+#
+# alert_emails is empty on purpose: this repository is public, so an address
+# committed here is published. Nothing is delivered until it has entries.
+alert_emails                    = []
+notify_on_recovery              = true
+alerts_kms_deletion_window_days = 7
+
+# The whole account, in USD. The lean profile runs at roughly $130/month while
+# deployed, so at $10 the budget alerts whenever the stack is up.
+monthly_budget_usd = 10
+budget_notifications = [
+  { notification_type = "FORECASTED", threshold_percent = 100 },
+  { notification_type = "ACTUAL", threshold_percent = 80 },
+  { notification_type = "ACTUAL", threshold_percent = 100 },
+]
+
+node_alarms = {
+  cpu_high = {
+    namespace           = "AWS/EC2"
+    metric_name         = "CPUUtilization"
+    statistic           = "Average"
+    comparison_operator = "GreaterThanThreshold"
+    threshold           = 80 # percent
+    period              = 300
+    evaluation_periods  = 3
+    treat_missing_data  = "missing"
+    description         = "Average CPU across the node group has been above 80% for 15 minutes."
+  }
+  status_check_failed = {
+    namespace           = "AWS/EC2"
+    metric_name         = "StatusCheckFailed"
+    statistic           = "Maximum"
+    comparison_operator = "GreaterThanThreshold"
+    threshold           = 0 # 1 means a failed check
+    period              = 60
+    evaluation_periods  = 5
+    treat_missing_data  = "missing"
+    description         = "At least one node has failed an EC2 status check for 5 minutes."
+  }
+}

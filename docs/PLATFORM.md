@@ -84,8 +84,8 @@ falling back to something written somewhere else.
 | File | Holds |
 | --- | --- |
 | `terraform/state.s3.tfbackend` | State bucket and region, shared by every root. Each `versions.tf` keeps only its own key, so `init` always takes `-backend-config`. |
-| `terraform/platform/terraform.tfvars` | Region, `name`, VPC and subnet sizing, Kubernetes version, the node group, API access CIDRs, the CI branches and state keys. |
-| `terraform/platform-db/terraform.tfvars` | Instance class, engine major version, storage, backups and maintenance windows, port. |
+| `terraform/platform/terraform.tfvars` | Region, `name`, VPC and subnet sizing, Kubernetes version, the node group, API access CIDRs, the CI branches and state keys. Alert recipients, the monthly budget and the node alarms. |
+| `terraform/platform-db/terraform.tfvars` | Instance class, engine major version, storage, backups and maintenance windows, port. The database alarms. |
 | `terraform/platform-addons/terraform.tfvars` | Chart versions and repositories, namespaces, replicas and resources, DNS and TLS settings. |
 | `terraform/platform-dns/terraform.tfvars` | `domain_name` — empty keeps the whole DNS and TLS path switched off. |
 
@@ -298,8 +298,8 @@ be dispatched from `main` — the apply role's trust policy pins that branch.
 | Scope | Removes | Keeps |
 | --- | --- | --- |
 | `addons-only` | ingress-nginx, ArgoCD, the NLB | cluster, nodes, database |
-| `everything` | the above + node group, control plane, VPC | **database**, CI roles |
-| `everything-including-database` | all of it, leaving a final snapshot | CI roles |
+| `everything` | the above + node group, control plane, VPC, node alarms | **database**, CI roles, alerts topic and budget |
+| `everything-including-database` | all of it, leaving a final snapshot | CI roles, alerts topic and budget |
 
 ### Why the order is what it is
 
@@ -327,6 +327,8 @@ Four constraints, three of them invisible until something has already leaked.
 - The KMS key enters a **30-day mandatory deletion window** and bills ~$1/month
   until it expires. This cannot be shortened.
 - A final RDS snapshot, if the database was destroyed. It bills until deleted.
+- The alerts topic, its KMS key (about $1/month) and the monthly budget. They are
+  what reports a platform left running, so they are kept on purpose.
 
 ### Verifying nothing was left
 
@@ -429,6 +431,45 @@ one.
 
 ---
 
+## Monitoring and alerts
+
+CloudWatch alarms on metrics AWS publishes at no extra cost, a monthly cost
+budget, and one encrypted SNS topic every alarm notifies. Nothing runs in the
+cluster for it: no agent, no Container Insights.
+
+| What | Defined in | Watches |
+| --- | --- | --- |
+| `edx-rhdh-alerts` SNS topic and its KMS key | `terraform/platform/alerts.tf` | — every alarm publishes here |
+| `edx-rhdh-monthly` budget | `terraform/platform/alerts.tf` | Account cost against `monthly_budget_usd` |
+| `node_alarms` | `terraform/platform/alerts.tf` | Node group CPU and EC2 status checks |
+| `db_alarms` | `terraform/platform-db/alarms.tf` | RDS CPU, free storage, freeable memory |
+
+Every threshold, period and recipient is in tfvars — see
+[Configuration](#configuration). Adding an alarm is a new entry in
+`node_alarms` or `db_alarms`; the code does not change. Thresholds are in the
+metric's CloudWatch unit, which for RDS storage and memory is bytes.
+
+**Receiving alerts.** `alert_emails` is empty in the committed tfvars because
+this repository is public, and an address committed there is published. Until
+it has entries, alarms change state with no one listening and the budget sends
+nothing. Each address gets a confirmation mail from AWS on the next apply and
+receives nothing until the link in it is followed.
+
+**Lifecycles.** The topic, its key and the budget live beside the CI roles and
+survive `destroy.yml` — the budget is most useful when nothing should be
+running at all. Node alarms are destroyed with the node group, database alarms
+with the database.
+
+**The topic's key is customer-managed on purpose.** CloudWatch cannot publish
+to a topic encrypted with the AWS-managed SNS key, and that failure is silent:
+the alarm fires and the mail never comes. The topic policy admits only alarms
+in this account whose names start with `edx-rhdh-`.
+
+**Not covered yet.** EKS control-plane metrics (the `AWS/EKS` namespace); the
+NLB, which the ingress-nginx Service owns rather than Terraform, so there is no
+ARN to alarm on; and a node group with no nodes left at all, which reports no
+data rather than a breach.
+
 ## Drift
 
 Applying is dispatch-only, so nothing converges the stack on a schedule and a
@@ -496,6 +537,7 @@ gh workflow run platform.yml --ref main -f root=both
 | Public IPv4 × 2 | 7 |
 | 2 × 30 GiB gp3 root volumes | 5 |
 | Control-plane logs (api + authenticator, 7 days) | <1 |
+| Alerts: KMS key + 5 CloudWatch alarms | 1.5 |
 
 **The control plane is 57% of the total and is not reducible while this is
 EKS.** Everything under it is already trimmed: Spot rather than on-demand,
