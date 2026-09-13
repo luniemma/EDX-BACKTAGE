@@ -114,14 +114,16 @@ variable "node_disk_size" {
 
 variable "cluster_admin_principals" {
   description = <<-EOT
-    IAM principals that hold cluster-admin regardless of who ran the last
-    apply. Empty by default, because the right list is account-specific and a
-    wrong ARN here is a broken apply rather than a warning.
+    IAM principals that hold cluster-admin in addition to the CI apply role,
+    which always does. Empty by default, because the right list is
+    account-specific and a wrong ARN here is a broken apply rather than a
+    warning.
 
-    Populate it with the humans and roles that need kubectl. Without it, admin
-    follows the applier — see enable_cluster_creator_admin_permissions in
-    main.tf — and the previous holder is silently revoked. Restoring access by
-    hand works but is drift the next apply undoes, so it has to be declared.
+    Populate it with the humans and roles that need kubectl — nothing else
+    grants it. Admin does not follow whoever ran the last apply, so a local
+    identity needs to be listed here, including the one running the first,
+    local bootstrap apply of platform-addons. Granting access by hand works but
+    is drift the next apply undoes, so it has to be declared.
 
       cluster_admin_principals = [
         "arn:aws:iam::724772096574:user/terra-project",
