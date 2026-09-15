@@ -140,7 +140,7 @@ jobs:
             echo "::notice::${{ matrix.role_var }} is not set, so ${{ matrix.root }} is not bootstrapped — skipping"
           fi
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         if: steps.role.outputs.set == 'true'
         with:
           terraform_version: ${{ env.TF_VERSION }}
