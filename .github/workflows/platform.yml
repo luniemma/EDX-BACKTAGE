@@ -81,7 +81,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read-only)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -169,7 +169,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read/write)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -205,7 +205,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read/write)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -247,7 +247,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read/write)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -290,7 +290,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC, read/write)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -315,7 +315,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
