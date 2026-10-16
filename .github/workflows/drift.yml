@@ -148,7 +148,7 @@ jobs:
 
       - name: Configure AWS credentials (OIDC, read-only)
         if: steps.role.outputs.set == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars[matrix.role_var] }}
           aws-region: ${{ env.AWS_REGION }}
@@ -247,7 +247,7 @@ jobs:
       - uses: ./.github/actions/cluster-name
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TF_PLATFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
